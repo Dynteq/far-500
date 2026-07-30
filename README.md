@@ -15,6 +15,21 @@ rechtstreeks met het device verbindt — geen server, geen installatie.
 Web Bluetooth vereist een secure context (https) en wordt alleen ondersteund
 door Chromium-browsers (Chrome, Edge) — niet door Firefox of Safari.
 
+## Metingen naar GitHub uploaden
+
+Naast lokaal downloaden kan een meting (of de geschiedenis-export) ook direct
+vanuit de UI naar deze repo geüpload worden ("Naar GitHub"-knoppen), handig
+als er alleen een mobiel (Bluefy) beschikbaar is. Het bestand komt terecht
+als **Release-asset** onder de tag `recordings` — bewust geen git-commit,
+zodat een asset ook echt weg is zodra je 'm verwijdert.
+
+Een directe browser-upload naar GitHub kan niet: het upload-endpoint van
+Releases ondersteunt geen CORS, en de CORS-vriendelijke Actions-triggers
+hebben een payloadlimiet van 64KB (te klein voor de geschiedenis-export).
+Daarom loopt de upload via een kleine relay, `far500-upload-worker/`
+(Cloudflare Worker), die het GitHub-token server-side houdt. Zie die map
+voor deploy-instructies.
+
 ## Architectuur
 
 ```
@@ -36,6 +51,7 @@ Aan/uit = schuifschakelaar in 18650+ lijn (geen firmware nodig).
 ```
 FAR-500_ESP32C6/     PlatformIO-project (env esp32-c6-devkitm-1), sketch in src/
 FAR-500.html         Laptop-UI (Web Bluetooth), ook gehost via GitHub Pages
+far500-upload-worker/ Cloudflare Worker: relay voor "meting naar GitHub" upload
 ARCHIEF/             Oude v2-bestanden (vóór de FAR-500-naamgeving)
 CLAUDE.md            Projectcontext + upload-log voor AI-assisted development
 ```

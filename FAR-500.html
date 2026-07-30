@@ -128,14 +128,22 @@
       <button id="btnStart" class="primary" disabled>Start meting</button>
       <button id="btnClear" class="danger" disabled>Wis device</button>
       <button id="btnXlsx" class="primary wide" disabled>Download XLSX</button>
+      <button id="btnXlsxGh" class="wide" disabled>Naar GitHub</button>
       <button id="btnCsv" disabled>Download CSV</button>
       <button id="btnDump" disabled>Device-log</button>
     </div>
+    <div class="hint" id="ghStatus"></div>
 
     <div class="card">
       <h3>Meting</h3>
       <div class="field"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Dubbeldek-rek / type_A"></div>
       <div class="field"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. laag, 200 N"></div>
+    </div>
+
+    <div class="card">
+      <h3>GitHub-upload</h3>
+      <div class="field"><label>Upload-code</label><input id="ghSecret" type="password" placeholder="code"></div>
+      <div class="hint">Voor de knoppen "Naar GitHub" bij de exports. Wordt alleen op dit toestel bewaard (localStorage).</div>
     </div>
 
     <div class="card">
@@ -199,7 +207,9 @@
       <div class="btns" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
         <button id="btnHistImport" disabled>Importeer geschiedenis</button>
         <button id="btnHistXlsx" class="primary" disabled>Download Excel</button>
+        <button id="btnHistXlsxGh" disabled>Naar GitHub</button>
       </div>
+      <div class="hint" id="histGhStatus"></div>
       <div id="histList" class="hint">nog niet geïmporteerd — verbind en klik op "Importeer geschiedenis".</div>
     </div>
   </section>
@@ -211,6 +221,9 @@ const DATA="9a8b0002-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
 const CTRL="9a8b0003-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
 const LOG="9a8b0004-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
 const D2R=Math.PI/180, WIN=0.3, H135=135;
+// Relay die uploads naar de GitHub Release-asset "recordings" doorzet (zie far500-upload-worker/).
+// Rechtstreekse browser-upload naar GitHub kan niet (CORS/payload-limieten) -- vandaar deze Worker.
+const GH_RELAY_URL="https://far500-upload-worker.JOUW-SUBDOMAIN.workers.dev";
 
 let ctrlChar=null, running=false, samples=[], dumpLines=[], dumping=false, dumpMode="raw";
 let liveAngle=NaN, measStart=null;
@@ -280,6 +293,26 @@ $("capLow").onclick=()=>{ const y=parseFloat($("yLow").value);
   cb.checked=init; apply(init);
 })();
 function limitsOn(){ return $("limitsEnabled").checked; }
+(function(){ const inp=$("ghSecret");
+  try{ const v=localStorage.getItem("far500ghsecret"); if(v) inp.value=v; }catch(e){}
+  inp.addEventListener("input",()=>{ try{ localStorage.setItem("far500ghsecret", inp.value); }catch(e){} });
+})();
+async function uploadToGitHub(blob,filename,statusElId,btnId){
+  const statusEl=$(statusElId), btn=btnId?$(btnId):null;
+  const secret=$("ghSecret").value.trim();
+  if(!secret){ statusEl.textContent="Vul eerst een upload-code in."; return; }
+  if(btn) btn.disabled=true;
+  statusEl.textContent="bezig met uploaden…";
+  try{
+    const res=await fetch(GH_RELAY_URL,{method:"POST",
+      headers:{"X-Upload-Secret":secret,"X-Filename":filename,"Content-Type":blob.type||"application/octet-stream"},
+      body:blob});
+    const data=await res.json().catch(()=>({}));
+    if(res.ok && data.ok) statusEl.innerHTML='gelukt — <a href="'+data.url+'" target="_blank" rel="noopener">bekijk op GitHub</a>';
+    else statusEl.textContent="mislukt: "+(data.error||res.status);
+  }catch(e){ statusEl.textContent="mislukt: "+e.message; }
+  finally{ if(btn) btn.disabled=false; }
+}
 
 function computeGeo(){
   geo.valid=false;
@@ -322,7 +355,7 @@ function onData(e){
   }
   if(running && devLogging!==false){ samples.push({t,deg,N:isNaN(N)?"":N});
     $("nSamples").textContent=samples.length; $("lastT").textContent=(t/1000).toFixed(2);
-    $("btnCsv").disabled=false; $("btnXlsx").disabled=false; analyze(); redraw(); }
+    $("btnCsv").disabled=false; $("btnXlsx").disabled=false; $("btnXlsxGh").disabled=false; analyze(); redraw(); }
 }
 function updateDiag(){
   const set=(v,id)=>$(id).textContent=isNaN(v)?"—":v.toFixed(1);
@@ -362,7 +395,7 @@ function importHistory(lines){
 function renderHistory(){
   const el=$("histList");
   if(!measHistory.length){ el.textContent="nog niet geïmporteerd — verbind en klik op \"Importeer geschiedenis\".";
-    $("btnHistXlsx").disabled=true; return; }
+    $("btnHistXlsx").disabled=true; $("btnHistXlsxGh").disabled=true; return; }
   let html='<div style="max-height:280px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px">'+
     '<tr style="color:var(--dim);text-align:left"><th style="padding:3px 6px">#</th><th style="padding:3px 6px">samples</th>'+
     '<th style="padding:3px 6px">duur</th><th style="padding:3px 6px">commentaar</th></tr>';
@@ -378,10 +411,9 @@ function renderHistory(){
   html+='</table></div>';
   el.innerHTML=html;
   el.querySelectorAll(".histComment").forEach(inp=>{ inp.oninput=()=>{ measHistory[+inp.dataset.hi].comment=inp.value; }; });
-  $("btnHistXlsx").disabled=false;
+  $("btnHistXlsx").disabled=false; $("btnHistXlsxGh").disabled=false;
 }
-$("btnHistXlsx").onclick=()=>{
-  if(!measHistory.length) return;
+function buildHistoryXlsx(){
   const overview=[["FAR-500 geschiedenis"],["Geïmporteerd",new Date().toLocaleString('nl-NL')],[],
     ["Meting nr","Samples","Duur (s)","Commentaar"]];
   measHistory.forEach(h=>overview.push([h.num,h.n,r2(h.durS),h.comment]));
@@ -391,8 +423,10 @@ $("btnHistXlsx").onclick=()=>{
     h.rows.forEach(s=>rows.push([r2(s.t/1000), s.deg, (s.N===""||isNaN(s.N))?"":s.N]));
     sheets.push({name:"M"+h.num,rows});
   });
-  download("far500_geschiedenis_"+new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)+".xlsx", xlsxWorkbook(sheets));
-};
+  return {blob:xlsxWorkbook(sheets), name:"far500_geschiedenis_"+new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)+".xlsx"};
+}
+$("btnHistXlsx").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); download(f.name,f.blob); };
+$("btnHistXlsxGh").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); uploadToGitHub(f.blob,f.name,"histGhStatus","btnHistXlsxGh"); };
 
 /* ---------------- analyse ---------------- */
 function resetAnalysis(){ A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false}; setBanner(); }
@@ -488,11 +522,13 @@ $("btnCsv").onclick=()=>{
 };
 
 /* ---- XLSX (ingebouwde zip-schrijver, geen library nodig) ---- */
-$("btnXlsx").onclick=()=>{
+function buildMetingXlsx(){
   const rows=[...metaRows(), [], DATA_HEADER];
   for(let i=0;i<samples.length;i++) rows.push(dataRow(i));
-  download(fname("xlsx"), xlsxBlob(rows,"Meting"));
-};
+  return {blob:xlsxBlob(rows,"Meting"), name:fname("xlsx")};
+}
+$("btnXlsx").onclick=()=>{ const f=buildMetingXlsx(); download(f.name,f.blob); };
+$("btnXlsxGh").onclick=()=>{ const f=buildMetingXlsx(); uploadToGitHub(f.blob,f.name,"ghStatus","btnXlsxGh"); };
 function xlsxBlob(rows,sheetName){ return xlsxWorkbook([{name:sheetName,rows}]); }
 // sheets: [{name, rows}, ...] -> 1 werkboek met 1 tabblad per entry, in volgorde.
 function xlsxWorkbook(sheets){

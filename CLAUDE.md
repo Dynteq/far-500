@@ -17,6 +17,15 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
      - LittleFS                       (gecombineerde CSV /log.csv)
    Aan/uit = schuifschakelaar in 18650+ lijn (geen firmware nodig).
 
+   Optioneel (los van de hub): `far500-upload-worker/` is een Cloudflare
+   Worker die de "Naar GitHub"-knoppen in de laptop-UI bedient — zet een
+   geüploade meting (.xlsx) door naar een GitHub Release-asset (tag
+   `recordings` op DynteqBV/far-500). Reden: directe browser-upload naar
+   GitHub kan niet (uploads.github.com heeft geen CORS, en de CORS-vriendelijke
+   Actions-dispatch-triggers hebben een payloadlimiet van 64KB). Het
+   GitHub-token blijft server-side in de Worker; de UI kent alleen een
+   gedeeld wachtwoord. Zie `far500-upload-worker/README.md` voor deploy.
+
    LIBRARIES (Library Manager):
      - "NimBLE-Arduino" (h2zero)  -> deze versie is voor v2.x (getest 2.5.0)
      - "U8g2" (oliver kraus)
@@ -25,6 +34,7 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
 ## Huidige status
 - Optimalisatie van UI
 - Bouwen / valideren van hoek justering
+- "Naar GitHub"-upload (Cloudflare Worker relay) toegevoegd aan de UI — nog niet gedeployed/getest door gebruiker (GH_RELAY_URL in FAR-500.html staat nog op placeholder)
 
 
 ## Belangrijke beslissingen
