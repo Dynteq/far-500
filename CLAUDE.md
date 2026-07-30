@@ -56,7 +56,6 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
 ## Naamgeving
 - Project/device heet **FAR-500** (BLE naam, OLED-tekst, UI). Let op: "Sauter FH 500" in de architectuurbeschrijving is de naam van het externe krachtmeetinstrument (UART-bron) en is dus NIET hernoemd.
 - PlatformIO-project: `FAR-500_ESP32C6/` (env `esp32-c6-devkitm-1`), sketch in `src/`.
-- Oude v2-bestanden (vóór de FAR-500-naamgeving) staan in `ARCHIEF/`.
 
 ## Upload-log (firmware -> ESP32-C6)
 - **2026-07-27**: `FAR-500_ESP32C6_v5.ino` succesvol geupload naar COM10 via PlatformIO (project: `FAR-500_ESP32C6/`, env `esp32-c6-devkitm-1`).

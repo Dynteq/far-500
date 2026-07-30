@@ -58,7 +58,6 @@ Aan/uit = schuifschakelaar in 18650+ lijn (geen firmware nodig).
 FAR-500_ESP32C6/     PlatformIO-project (env esp32-c6-devkitm-1), sketch in src/
 FAR-500.html         Laptop-UI (Web Bluetooth), ook gehost via GitHub Pages
 far500-upload-worker/ Cloudflare Worker: relay voor "meting naar GitHub" upload
-ARCHIEF/             Oude v2-bestanden (vóór de FAR-500-naamgeving)
 CLAUDE.md            Projectcontext + upload-log voor AI-assisted development
 ```
 
