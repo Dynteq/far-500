@@ -39,9 +39,12 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    BOARD: esp32 by Espressif >= 3.0.x, "ESP32C6 Dev Module", USB CDC On Boot = On
    
 ## Huidige status
+- **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- "Naar GitHub"-upload (Cloudflare Worker relay) toegevoegd aan de UI, gedeployed en end-to-end getest (2026-07-30) — werkt met een classic PAT (zie Architectuur-sectie voor het waarom). Bestandsnamen (export + upload) beginnen nu met een `yyyymmdd_hhmmss`-tijdstempel.
+- Repo verplaatst van persoonlijk account (studiotijn) naar org `DynteqBV` (2026-07-30).
+- Later (nog niet actueel): GitHub-org hernoemen van `DynteqBV` naar `dynteq` zodra die naam vrijkomt (nu nog in gebruik door een collega).
 - Optimalisatie van UI
 - Bouwen / valideren van hoek justering
-- "Naar GitHub"-upload (Cloudflare Worker relay) toegevoegd aan de UI, gedeployed en end-to-end getest (2026-07-30) — werkt met een classic PAT (zie Architectuur-sectie voor het waarom)
 
 
 ## Belangrijke beslissingen
