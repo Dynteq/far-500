@@ -23,6 +23,12 @@ als er alleen een mobiel (Bluefy) beschikbaar is. Het bestand komt terecht
 als **Release-asset** onder de tag `recordings` — bewust geen git-commit,
 zodat een asset ook echt weg is zodra je 'm verwijdert.
 
+**Locatie:** https://github.com/DynteqBV/far-500/releases/tag/recordings
+
+Dit is **tijdelijke opslag** op een publieke repo: haal een bestand na het
+downloaden op je computer altijd weer weg uit de release. Er wordt niets
+automatisch opgeruimd.
+
 Een directe browser-upload naar GitHub kan niet: het upload-endpoint van
 Releases ondersteunt geen CORS, en de CORS-vriendelijke Actions-triggers
 hebben een payloadlimiet van 64KB (te klein voor de geschiedenis-export).

@@ -423,7 +423,7 @@ function buildHistoryXlsx(){
     h.rows.forEach(s=>rows.push([r2(s.t/1000), s.deg, (s.N===""||isNaN(s.N))?"":s.N]));
     sheets.push({name:"M"+h.num,rows});
   });
-  return {blob:xlsxWorkbook(sheets), name:"far500_geschiedenis_"+new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)+".xlsx"};
+  return {blob:xlsxWorkbook(sheets), name:tsStamp()+"_far500_geschiedenis.xlsx"};
 }
 $("btnHistXlsx").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); download(f.name,f.blob); };
 $("btnHistXlsxGh").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); uploadToGitHub(f.blob,f.name,"histGhStatus","btnHistXlsxGh"); };
@@ -509,8 +509,10 @@ function dataRow(i){ const hl=haveL();
   return [ Math.round(samples[i].t/1000*100)/100, samples[i].deg, samples[i].N,
     hl?r2(A.arc[i]):"", hl?r2(A.spd[i]):"", hl?r2(A.acc[i]):"", (hl&&haveHL())?r2(A.ht[i]):"" ]; }
 
+function tsStamp(){ const d=new Date(), p=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
 function fname(ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
-  return nm+"_"+new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)+"."+ext; }
+  return tsStamp()+"_"+nm+"."+ext; }
 function download(name,blob){ const u=URL.createObjectURL(blob);
   Object.assign(document.createElement("a"),{href:u,download:name}).click(); URL.revokeObjectURL(u); }
 
