@@ -1,7 +1,7 @@
 # Project Context
 
 ## Doel
-Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE verbinding uit te lezen is en te kalibreren is.
+Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE verbinding uit te lezen is en te justeren is.
 
 ## Architectuur
 
