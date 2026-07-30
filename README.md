@@ -10,7 +10,7 @@ De laptop-UI (`FAR-500.html`) is een losstaande webpagina die via
 [Web Bluetooth](https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API)
 rechtstreeks met het device verbindt — geen server, geen installatie.
 
-**Live:** https://studiotijn.github.io/far-500/ (GitHub Pages)
+**Live:** https://dynteqbv.github.io/far-500/ (GitHub Pages)
 
 Web Bluetooth vereist een secure context (https) en wordt alleen ondersteund
 door Chromium-browsers (Chrome, Edge) — niet door Firefox of Safari.
