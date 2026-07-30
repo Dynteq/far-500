@@ -223,7 +223,7 @@ const LOG="9a8b0004-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
 const D2R=Math.PI/180, WIN=0.3, H135=135;
 // Relay die uploads naar de GitHub Release-asset "recordings" doorzet (zie far500-upload-worker/).
 // Rechtstreekse browser-upload naar GitHub kan niet (CORS/payload-limieten) -- vandaar deze Worker.
-const GH_RELAY_URL="https://far500-upload-worker.JOUW-SUBDOMAIN.workers.dev";
+const GH_RELAY_URL="https://far500-upload-worker.far500-upload-worker.workers.dev";
 
 let ctrlChar=null, running=false, samples=[], dumpLines=[], dumping=false, dumpMode="raw";
 let liveAngle=NaN, measStart=null;

@@ -1,6 +1,9 @@
 # PlatformIO build-cache / gedownloade toolchains & libraries (regenereerbaar via `pio run`)
 FAR-500_ESP32C6/.pio/
 
+# Wrangler (Cloudflare Worker) lokale cache
+far500-upload-worker/.wrangler/
+
 # Lokale Claude Code permissie-instellingen (machine-specifiek, hoort niet gedeeld te worden)
 .claude/settings.local.json
 

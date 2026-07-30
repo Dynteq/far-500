@@ -32,7 +32,7 @@ export default {
     if (!body || body.byteLength === 0) return json({ ok: false, error: "empty body" }, 400);
 
     const ghHeaders = {
-      "Authorization": `Bearer ${env.GH_TOKEN}`,
+      "Authorization": `token ${env.GH_TOKEN}`,
       "Accept": "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "far500-upload-worker",
@@ -65,7 +65,7 @@ function json(obj, status) {
 async function getRelease(headers) {
   const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${TAG}`, { headers });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`get release failed (${res.status})`);
+  if (!res.ok) throw new Error(`get release failed (${res.status}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
   return res.json();
 }
 
@@ -80,7 +80,7 @@ async function createRelease(headers) {
       prerelease: true,
     }),
   });
-  if (!res.ok) throw new Error(`create release failed (${res.status})`);
+  if (!res.ok) throw new Error(`create release failed (${res.status}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
   return res.json();
 }
 
