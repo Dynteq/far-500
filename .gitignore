@@ -1,0 +1,12 @@
+# PlatformIO build-cache / gedownloade toolchains & libraries (regenereerbaar via `pio run`)
+FAR-500_ESP32C6/.pio/
+
+# Lokale Claude Code permissie-instellingen (machine-specifiek, hoort niet gedeeld te worden)
+.claude/settings.local.json
+
+# Windows/OS-troep
+Thumbs.db
+desktop.ini
+
+# oude/gearchiveerde werkbestanden
+*.oud

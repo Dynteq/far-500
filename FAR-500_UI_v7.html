@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAR-500 — kracht/hoek/afstand</title>
+<style>
+  :root{
+    --bg:#0e1414; --panel:#16201f; --line:#26302f; --ink:#e7eeec; --dim:#8aa39f;
+    --cyan:#00b4ce; --amber:#f0b429; --green:#36c98a; --purple:#c678dd; --orange:#ff9f43;
+    --ok:#36c98a; --bad:#e5564b;
+    --mono:"SFMono-Regular",ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+    --sans:Inter,"Segoe UI",system-ui,sans-serif;
+    --inputbg:#0e1414;
+  }
+  body.light{
+    --bg:#f5f7f7; --panel:#ffffff; --line:#d6dedd; --ink:#152322; --dim:#5c6d6a;
+    --cyan:#008fa6; --amber:#b7791f; --green:#1e9e6a; --purple:#7a41c9; --orange:#d97a06;
+    --inputbg:#eef3f2;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  header{display:flex;align-items:center;gap:16px;padding:16px 22px;border-bottom:1px solid var(--line)}
+  header .mark{width:10px;height:26px;background:var(--cyan);border-radius:2px}
+  header h1{font-size:15px;font-weight:600;letter-spacing:.04em;margin:0}
+  header .sub{font-family:var(--mono);font-size:12px;color:var(--dim);margin-left:auto}
+  .theme-btn{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 10px;font-size:15px;line-height:1;cursor:pointer}
+  .theme-btn:hover{border-color:var(--dim)}
+  .status{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--bad);transition:.2s}
+  .dot.on{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  main{display:grid;grid-template-columns:370px 1fr;gap:1px;background:var(--line);min-height:calc(100vh - 61px)}
+  .col{background:var(--bg);padding:20px;display:flex;flex-direction:column;gap:15px;overflow-y:auto}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card h3{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
+  .readrow{display:flex;gap:12px}
+  .readout{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .readout .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+  .readout .val{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:34px;font-weight:600;line-height:1.1;margin-top:4px}
+  .readout .unit{font-size:15px;color:var(--dim);margin-left:5px}
+  .readout.force .val{color:var(--cyan)} .readout.angle .val{color:var(--amber)}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{flex:1;border:0;border-radius:0;background:var(--panel);color:var(--dim);padding:9px}
+  .seg button.active{background:var(--amber);color:#1a1400;font-weight:600}
+  .seg button:not(:last-child){border-right:1px solid var(--line)}
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  button{font-family:var(--sans);font-size:14px;font-weight:500;color:var(--ink);background:var(--panel);
+         border:1px solid var(--line);border-radius:8px;padding:10px 11px;cursor:pointer;transition:.12s}
+  button:hover:not(:disabled){border-color:var(--dim)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  button.primary{background:var(--cyan);color:#04181c;border-color:var(--cyan);font-weight:600}
+  button.danger{color:var(--bad);border-color:#3a2a2a}
+  button.wide{grid-column:1 / -1}
+  .field{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px}
+  .field label{color:var(--dim);width:118px;flex-shrink:0}
+  .field input{flex:1;min-width:0;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);
+               border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:13px}
+  .field input.num{flex:none;width:76px}
+  .field .cap{font-family:var(--mono);color:var(--amber);font-size:12px;min-width:48px}
+  .field button{padding:6px 10px;font-size:12px}
+  .calc{display:flex;justify-content:space-between;font-family:var(--mono);font-size:13px;padding:3px 0}
+  .calc b{color:var(--green);font-weight:600}
+  .rng{color:var(--dim);font-weight:400;font-size:11px}
+  .banner{border-radius:10px;padding:12px 14px;font-weight:600;font-size:14px;text-align:center;border:1px solid var(--line);background:var(--panel);color:var(--dim)}
+  .banner.ok{background:rgba(54,201,138,.12);border-color:var(--ok);color:var(--ok)}
+  .banner.fail{background:rgba(229,86,75,.14);border-color:var(--bad);color:var(--bad)}
+  .meta{font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.8}
+  .meta b{color:var(--ink);font-weight:500}
+  .chart-wrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px 8px;margin-bottom:16px}
+  .chart-wrap h2{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 8px}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:6px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:10px;height:3px;border-radius:2px;display:inline-block}
+  canvas{width:100%;display:block;max-height:800px}
+  .hint{font-size:12px;color:var(--dim);line-height:1.5}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin-bottom:4px;cursor:pointer;user-select:none}
+  .toggle input{cursor:pointer}
+  .collapsible{max-height:0;overflow:hidden;opacity:0;transition:max-height .25s ease,opacity .2s ease}
+  .collapsible.open{max-height:160px;opacity:1}
+
+  .compat{display:none}
+  .compat.bad{display:block;background:rgba(229,86,75,.15);border-bottom:1px solid var(--bad);
+              color:#ffd0cc;padding:11px 22px;font-size:13px;line-height:1.5}
+  .compat.bad b{color:#fff}
+  @media (max-width:860px){
+    main{grid-template-columns:1fr}
+    .col{overflow-y:visible;padding:16px}
+    header{padding:14px 16px} header .sub{display:none}
+    .readout .val{font-size:30px}
+    button{padding:12px 11px}            /* grotere tikdoelen */
+    .field label{width:104px}
+    .field input.num{width:70px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark"></div><h1>FAR-500</h1>
+  <span class="status"><span class="dot" id="dot"></span><span id="connTxt">niet verbonden</span></span>
+  <span class="sub">kracht · hoek · afstand · snelheid</span>
+  <button id="themeToggle" class="theme-btn" title="Licht / donker">☀</button>
+</header>
+<div id="compat"></div>
+<main>
+  <!-- ================= BEDIENING ================= -->
+  <section class="col">
+    <div class="readrow">
+      <div class="readout force"><div class="lbl">Kracht</div>
+        <div class="val"><span id="forceVal">—</span><span class="unit">N</span></div></div>
+      <div class="readout angle"><div class="lbl">Hoek (gekalibreerd)</div>
+        <div class="val"><span id="angleVal">—</span><span class="unit">°</span></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Sensor-oriëntatie (ruw) — kantelcontrole</h3>
+      <div class="calc"><span>X (pitch)</span><b><span id="rawX">—</span>°&nbsp;&nbsp;<span class="rng" id="rngX">—</span></b></div>
+      <div class="calc"><span>Y (roll)</span><b><span id="rawY">—</span>°&nbsp;&nbsp;<span class="rng" id="rngY">—</span></b></div>
+      <div class="calc"><span>Z (t.o.v. horiz.)</span><b><span id="rawZ">—</span>°&nbsp;&nbsp;<span class="rng" id="rngZ">—</span></b></div>
+      <button id="btnResetRange" style="margin-top:8px;width:100%">Reset bereik</button>
+      <div class="hint" style="margin-top:6px">De hoek wordt via een gekalibreerde 3D-vector bepaald (ongevoelig voor montage-scheefstand). X/Y/Z hierboven zijn puur diagnose: blijven ze onderling ongeveer constant, dan staat de sensor stabiel.</div>
+    </div>
+
+    <div class="banner" id="resultBanner">nog geen meting</div>
+    <div class="btns">
+      <button id="btnConnect" class="primary wide">Verbinden</button>
+      <button id="btnTare" disabled>Tare 0°</button>
+      <button id="btnStop" disabled>Stop</button>
+      <button id="btnStart" class="primary" disabled>Start meting</button>
+      <button id="btnClear" class="danger" disabled>Wis device</button>
+      <button id="btnXlsx" class="primary wide" disabled>Download XLSX</button>
+      <button id="btnCsv" disabled>Download CSV</button>
+      <button id="btnDump" disabled>Device-log</button>
+    </div>
+
+    <div class="card">
+      <h3>Meting</h3>
+      <div class="field"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Falco X / type A"></div>
+      <div class="field"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. laag, 200 N"></div>
+    </div>
+
+    <div class="card">
+      <h3>Handvat-posities → geometrie</h3>
+      <div class="field">
+        <label>Handvat HOOG (cm)</label>
+        <input id="yHigh" class="num" type="number" step="0.1" placeholder="hoogte">
+        <button id="capHigh">Vastleggen</button><span class="cap" id="angHigh">—</span>
+      </div>
+      <div class="field">
+        <label>Handvat LAAG (cm)</label>
+        <input id="yLow" class="num" type="number" step="0.1" placeholder="hoogte">
+        <button id="capLow">Vastleggen</button><span class="cap" id="angLow">—</span>
+      </div>
+      <div class="calc"><span>H berekend</span><b id="valH">—</b></div>
+      <div class="calc"><span>L berekend</span><b id="valL">—</b></div>
+      <div class="field" style="margin-top:8px"><label>H werkelijk (cm)</label><input id="Hman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
+      <div class="field"><label>L werkelijk (cm)</label><input id="Lman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
+      <div class="hint" id="geoHint">Werkelijke waarden hebben voorrang op de berekende voor afstand/hoogte.</div>
+    </div>
+
+    <div class="card">
+      <h3>Limieten & live</h3>
+      <label class="toggle"><input type="checkbox" id="limitsEnabled" checked>Snelheid/versnelling-limiet controleren</label>
+      <div class="collapsible open" id="limitsFields">
+        <div class="field"><label>Max snelheid (cm/s)</label><input id="vmax" class="num" type="number" step="1" value="20"></div>
+        <div class="field"><label>Max versnelling (cm/s²)</label><input id="amax" class="num" type="number" step="1" value="40"></div>
+      </div>
+      <div class="calc"><span>Afstand nu</span><b id="valArc">—</b></div>
+      <div class="calc"><span>Snelheid nu</span><b id="valSpd">—</b></div>
+      <div class="calc"><span>Handvat-hoogte nu</span><b id="valHt">—</b></div>
+      <div class="calc"><span>Piek |v| / |a|</span><b id="valPeak">—</b></div>
+    </div>
+
+    <div class="meta">
+      samples <b id="nSamples">0</b> · t <b id="lastT">0.00</b> s · accu <b id="bat">—</b> %<br>
+      meting <b id="runState">gestopt</b>
+    </div>
+  </section>
+
+  <!-- ================= GRAFIEKEN ================= -->
+  <section class="col">
+    <div class="chart-wrap">
+      <h2>Verloop — t in seconden</h2>
+      <div class="legend">
+        <span><i style="background:var(--cyan)"></i>kracht (N)</span>
+        <span><i style="background:var(--amber)"></i>hoek (°)</span>
+        <span><i style="background:var(--green)"></i>afstand (cm)</span>
+        <span><i style="background:var(--purple)"></i>snelheid (cm/s)</span>
+        <span><i style="background:var(--ink)"></i>│20 cm</span>
+        <span><i style="background:var(--orange)"></i>│135 cm</span>
+      </div>
+      <canvas id="tsCanvas" data-h="320"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h2>Kracht vs. hoek</h2>
+      <canvas id="xyCanvas" data-h="300"></canvas>
+    </div>
+    <div class="chart-wrap" id="histWrap">
+      <h2>Geschiedenis — laatste metingen op device</h2>
+      <div class="btns" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
+        <button id="btnHistImport" disabled>Importeer geschiedenis</button>
+        <button id="btnHistXlsx" class="primary" disabled>Download Excel</button>
+      </div>
+      <div id="histList" class="hint">nog niet geïmporteerd — verbind en klik op "Importeer geschiedenis".</div>
+    </div>
+  </section>
+</main>
+
+<script>
+const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
+const DATA="9a8b0002-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
+const CTRL="9a8b0003-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
+const LOG="9a8b0004-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
+const D2R=Math.PI/180, WIN=0.3, H135=135;
+
+let ctrlChar=null, running=false, samples=[], dumpLines=[], dumping=false, dumpMode="raw";
+let liveAngle=NaN, measStart=null;
+let measHistory=[];   // geïmporteerde meting-geschiedenis: [{num,n,durS,rows:[{t,deg,N}],comment}]
+let diag={x:NaN,y:NaN,z:NaN,xmin:1e9,xmax:-1e9,ymin:1e9,ymax:-1e9,zmin:1e9,zmax:-1e9};
+const dec=new TextDecoder(), $=id=>document.getElementById(id);
+const dot=$("dot"), connTxt=$("connTxt");
+
+let geo={yHigh:null,angHigh:null,yLow:null,angLow:null,L:null,H:null,Lman:null,Hman:null,valid:false};
+let A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false};
+
+function Lused(){ return (geo.Lman!=null&&geo.Lman>0)?geo.Lman:((geo.L!=null&&geo.L>0)?geo.L:null); }
+function Hused(){ return (geo.Hman!=null&&isFinite(geo.Hman))?geo.Hman:((geo.H!=null&&isFinite(geo.H))?geo.H:null); }
+const haveL =()=>Lused()!=null;
+const haveHL=()=>haveL()&&Hused()!=null;
+
+/* ---------------- BLE ---------------- */
+$("btnConnect").onclick=async()=>{
+  if(!navigator.bluetooth){alert("Web Bluetooth niet beschikbaar. Gebruik Chrome/Edge op desktop.");return;}
+  try{
+    const dev=await navigator.bluetooth.requestDevice({filters:[{namePrefix:"FAR-500"}],optionalServices:[SERVICE]});
+    dev.addEventListener("gattserverdisconnected",onDisconnect);
+    const srv=await dev.gatt.connect(), svc=await srv.getPrimaryService(SERVICE);
+    ctrlChar=await svc.getCharacteristic(CTRL);
+    const data=await svc.getCharacteristic(DATA); await data.startNotifications();
+    data.addEventListener("characteristicvaluechanged",onData);
+    const log=await svc.getCharacteristic(LOG); await log.startNotifications();
+    log.addEventListener("characteristicvaluechanged",onLog);
+    setConnected(true,dev.name||"FAR-500");
+  }catch(e){ if(e.name!=="NotFoundError") alert("Verbinden mislukt: "+e.message); }
+};
+function setConnected(on,name){
+  dot.classList.toggle("on",on); connTxt.textContent=on?name:"niet verbonden";
+  ["btnTare","btnStart","btnClear","btnDump","btnHistImport"].forEach(id=>$(id).disabled=!on);
+  $("btnStop").disabled=true; $("btnConnect").textContent=on?"Verbonden":"Verbinden"; $("btnConnect").disabled=on;
+}
+function onDisconnect(){ setConnected(false); running=false; updateRun(); $("btnConnect").disabled=false; }
+async function send(cmd){ if(ctrlChar) await ctrlChar.writeValue(new TextEncoder().encode(cmd)); }
+$("btnTare").onclick =()=>send("TARE");
+$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); send("START"); running=true; updateRun(); redraw(); };
+$("btnStop").onclick =()=>{ send("STOP"); running=false; updateRun(); };
+$("btnClear").onclick=()=>{ if(confirm("Device-log wissen?")) send("CLEAR"); };
+$("btnDump").onclick =()=>{ dumpMode="raw"; dumpLines=[]; dumping=true; send("DUMP"); };
+$("btnHistImport").onclick=()=>{ dumpMode="history"; dumpLines=[]; dumping=true; send("DUMP"); };
+$("btnResetRange").onclick=()=>{ diag.xmin=diag.ymin=diag.zmin=1e9; diag.xmax=diag.ymax=diag.zmax=-1e9; updateDiag(); };
+function updateRun(){ $("runState").textContent=running?"loopt":"gestopt";
+  $("btnStart").disabled=!ctrlChar||running; $("btnStop").disabled=!running; }
+
+/* ---------------- geometrie ---------------- */
+$("capHigh").onclick=()=>{ const y=parseFloat($("yHigh").value);
+  if(isNaN(y)){alert("Vul eerst handvathoogte HOOG in.");return;}
+  if(isNaN(liveAngle)){alert("Geen live hoek.");return;}
+  geo.yHigh=y; geo.angHigh=liveAngle; $("angHigh").textContent=liveAngle.toFixed(1)+"°"; computeGeo(); };
+$("capLow").onclick=()=>{ const y=parseFloat($("yLow").value);
+  if(isNaN(y)){alert("Vul eerst handvathoogte LAAG in.");return;}
+  if(isNaN(liveAngle)){alert("Geen live hoek.");return;}
+  geo.yLow=y; geo.angLow=liveAngle; $("angLow").textContent=liveAngle.toFixed(1)+"°"; computeGeo(); };
+["Hman","Lman"].forEach(id=>$(id).addEventListener("input",()=>{ const v=parseFloat($(id).value);
+  geo[id]=isNaN(v)?null:v; analyze(); redraw(); }));
+["vmax","amax"].forEach(id=>$(id).addEventListener("input",()=>{ analyze(); redraw(); }));
+(function(){ const cb=$("limitsEnabled"), fields=$("limitsFields");
+  function apply(on){ fields.classList.toggle("open",on);
+    try{ localStorage.setItem("far500limits", on?"1":"0"); }catch(e){}
+    analyze(); redraw(); }
+  cb.onchange=()=>apply(cb.checked);
+  let init=true; try{ const v=localStorage.getItem("far500limits"); if(v!==null) init=v==="1"; }catch(e){}
+  cb.checked=init; apply(init);
+})();
+function limitsOn(){ return $("limitsEnabled").checked; }
+
+function computeGeo(){
+  geo.valid=false;
+  if(geo.yHigh!=null && geo.yLow!=null){
+    const sH=Math.sin(geo.angHigh*D2R), sL=Math.sin(geo.angLow*D2R), den=sL-sH;
+    if(Math.abs(den)>1e-4){ geo.L=(geo.yHigh-geo.yLow)/den; geo.H=geo.yHigh+geo.L*sH;
+      if(isFinite(geo.L)&&isFinite(geo.H)&&geo.L>0){ geo.valid=true;
+        $("valL").textContent=geo.L.toFixed(1)+" cm"; $("valH").textContent=geo.H.toFixed(1)+" cm"; } }
+    if(!geo.valid){ $("valL").textContent="ongeldig"; $("valH").textContent="—"; }
+  }
+  analyze(); redraw();
+}
+
+/* ---------------- data ---------------- */
+let lastDevLogging=null;
+function onData(e){
+  const p=dec.decode(e.target.value).trim().split(",");
+  if(p.length<3) return;
+  const t=+p[0],deg=parseFloat(p[1]),N=parseFloat(p[2]),bat=p[3]!==undefined?+p[3]:null;
+  const devLogging=p.length>=8?(+p[7]===1):null;   // 8e veld: logt device nu (0/1)? ontbreekt bij oudere firmware
+  liveAngle=deg;
+  $("angleVal").textContent=isNaN(deg)?"—":deg.toFixed(1);
+  $("forceVal").textContent=isNaN(N)?"—":N.toFixed(0);
+  if(bat!==null) $("bat").textContent=bat;
+  if(p.length>=7){ const rx=parseFloat(p[4]),ry=parseFloat(p[5]),rz=parseFloat(p[6]);
+    if(!isNaN(rx)){ diag.x=rx; diag.xmin=Math.min(diag.xmin,rx); diag.xmax=Math.max(diag.xmax,rx); }
+    if(!isNaN(ry)){ diag.y=ry; diag.ymin=Math.min(diag.ymin,ry); diag.ymax=Math.max(diag.ymax,ry); }
+    if(!isNaN(rz)){ diag.z=rz; diag.zmin=Math.min(diag.zmin,rz); diag.zmax=Math.max(diag.zmax,rz); }
+    updateDiag(); }
+  // Volg de werkelijke logstatus van het device (ook als START/STOP via de
+  // drukknop gebeurde i.p.v. via de UI), zodat de grafiek altijd correct
+  // start/stopt i.p.v. door te blijven vullen met t=0-samples na een stop
+  // die de UI niet zelf initieerde.
+  if(devLogging!==null){
+    if(lastDevLogging!==null && devLogging!==lastDevLogging){
+      if(devLogging && !running){ samples=[]; resetAnalysis(); measStart=new Date(); running=true; updateRun(); redraw(); }
+      else if(!devLogging && running){ running=false; updateRun(); }
+    }
+    lastDevLogging=devLogging;
+  }
+  if(running && devLogging!==false){ samples.push({t,deg,N:isNaN(N)?"":N});
+    $("nSamples").textContent=samples.length; $("lastT").textContent=(t/1000).toFixed(2);
+    $("btnCsv").disabled=false; $("btnXlsx").disabled=false; analyze(); redraw(); }
+}
+function updateDiag(){
+  const set=(v,id)=>$(id).textContent=isNaN(v)?"—":v.toFixed(1);
+  set(diag.x,"rawX"); set(diag.y,"rawY"); set(diag.z,"rawZ");
+  const rng=(mn,mx,id)=>$(id).textContent=(mx<mn)?"":("["+mn.toFixed(1)+"…"+mx.toFixed(1)+"  Δ"+(mx-mn).toFixed(1)+"]");
+  rng(diag.xmin,diag.xmax,"rngX"); rng(diag.ymin,diag.ymax,"rngY"); rng(diag.zmin,diag.zmax,"rngZ");
+}
+function onLog(e){ const line=dec.decode(e.target.value);
+  if(line.trim()==="<<EOF>>"){ dumping=false;
+    if(dumpMode==="history"){ importHistory(dumpLines); }
+    else if(dumpLines.length) download("device_log.csv",new Blob([dumpLines.join("\r\n")],{type:"text/csv"}));
+    else alert("Device-log is leeg.");
+    return; }
+  if(dumping) dumpLines.push(line); }
+
+/* ---------------- geschiedenis ---------------- */
+// Het device markeert het begin van elke meting in het gecombineerde
+// logbestand met een regel "#MEAS,<nummer>,<startms>". Splits daarop, en
+// bewaar per meting de laatst ingevoerde commentaar (bij opnieuw importeren).
+function importHistory(lines){
+  const blocks=[]; let cur=null;
+  lines.forEach(raw=>{ const l=raw.replace(/\r$/,"");
+    if(l.startsWith("#MEAS,")){ const p=l.split(","); cur={num:parseInt(p[1],10)||0,rows:[]}; blocks.push(cur); }
+    else if(cur && l && !l.startsWith("ms,")){ const f=l.split(",");
+      if(f.length>=3){ const t=parseFloat(f[0]),deg=parseFloat(f[1]),N=parseFloat(f[2]);
+        if(!isNaN(t)&&!isNaN(deg)) cur.rows.push({t,deg,N}); } }
+  });
+  const prevComments={}; measHistory.forEach(h=>prevComments[h.num]=h.comment);
+  measHistory=blocks.filter(b=>b.rows.length).slice(-50).map(b=>({
+    num:b.num, n:b.rows.length,
+    durS:(b.rows[b.rows.length-1].t-b.rows[0].t)/1000,
+    rows:b.rows, comment:prevComments[b.num]||""
+  }));
+  renderHistory();
+  if(!measHistory.length) alert("Geen (herkenbare) metingen gevonden in de device-geschiedenis.");
+}
+function renderHistory(){
+  const el=$("histList");
+  if(!measHistory.length){ el.textContent="nog niet geïmporteerd — verbind en klik op \"Importeer geschiedenis\".";
+    $("btnHistXlsx").disabled=true; return; }
+  let html='<div style="max-height:280px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px">'+
+    '<tr style="color:var(--dim);text-align:left"><th style="padding:3px 6px">#</th><th style="padding:3px 6px">samples</th>'+
+    '<th style="padding:3px 6px">duur</th><th style="padding:3px 6px">commentaar</th></tr>';
+  measHistory.forEach((h,i)=>{
+    html+='<tr style="border-top:1px solid var(--line)">'+
+      '<td style="padding:4px 6px">'+h.num+'</td>'+
+      '<td style="padding:4px 6px">'+h.n+'</td>'+
+      '<td style="padding:4px 6px">'+h.durS.toFixed(1)+' s</td>'+
+      '<td style="padding:3px 6px"><input data-hi="'+i+'" class="histComment" type="text" value="'+
+      h.comment.replace(/&/g,"&amp;").replace(/"/g,"&quot;")+
+      '" placeholder="opmerking…" style="width:100%;box-sizing:border-box;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:5px 7px;font-family:var(--sans);font-size:12px"></td></tr>';
+  });
+  html+='</table></div>';
+  el.innerHTML=html;
+  el.querySelectorAll(".histComment").forEach(inp=>{ inp.oninput=()=>{ measHistory[+inp.dataset.hi].comment=inp.value; }; });
+  $("btnHistXlsx").disabled=false;
+}
+$("btnHistXlsx").onclick=()=>{
+  if(!measHistory.length) return;
+  const overview=[["FAR-500 geschiedenis"],["Geïmporteerd",new Date().toLocaleString('nl-NL')],[],
+    ["Meting nr","Samples","Duur (s)","Commentaar"]];
+  measHistory.forEach(h=>overview.push([h.num,h.n,r2(h.durS),h.comment]));
+  const sheets=[{name:"Overzicht",rows:overview}];
+  measHistory.forEach(h=>{
+    const rows=[["Meting "+h.num],["Commentaar",h.comment],[],["t_s","angle_deg","force_N"]];
+    h.rows.forEach(s=>rows.push([r2(s.t/1000), s.deg, (s.N===""||isNaN(s.N))?"":s.N]));
+    sheets.push({name:"M"+h.num,rows});
+  });
+  download("far500_geschiedenis_"+new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)+".xlsx", xlsxWorkbook(sheets));
+};
+
+/* ---------------- analyse ---------------- */
+function resetAnalysis(){ A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false}; setBanner(); }
+function derivAt(i,arr,ts){ let j=i-1; while(j>0&&ts[i]-ts[j]<WIN)j--; if(j<0||ts[i]===ts[j])return 0; return (arr[i]-arr[j])/(ts[i]-ts[j]); }
+
+function analyze(){
+  const n=samples.length; A.ts=samples.map(s=>s.t/1000);
+  A.arc=[]; A.spd=[]; A.acc=[]; A.ht=[]; A.markUp=A.markDown=A.m135up=A.m135down=null; A.maxV=0; A.maxA=0; A.failA=A.failB=false;
+  if(n===0){ setBanner(); return; }
+  const L=Lused(), Hh=Hused();
+  if(L!=null){
+    const th0=samples[0].deg*D2R;
+    for(let i=0;i<n;i++){ const th=samples[i].deg*D2R;
+      A.arc[i]=L*(th0-th);                                   // cm, 0 bij start (laag), + = omhoog
+      A.ht[i]=(Hh!=null)?(Hh-L*Math.sin(th)):NaN;            // handvathoogte tov grond
+    }
+    for(let i=0;i<n;i++) A.spd[i]=derivAt(i,A.arc,A.ts);
+    for(let i=0;i<n;i++) A.acc[i]=derivAt(i,A.spd,A.ts);
+    // hoogste punt = grootste afstand (goot maximaal omhoog)
+    let peak=0; for(let i=1;i<n;i++) if(A.arc[i]>A.arc[peak]) peak=i;
+    // 20 cm na start opgaande beweging (voor de piek), en 20 cm na de piek (neergaand)
+    for(let i=1;i<=peak;i++){ if(A.markUp===null && A.arc[i]-A.arc[0]>=20) A.markUp=A.ts[i]; }
+    for(let i=peak+1;i<n;i++){ if(A.markDown===null && A.arc[peak]-A.arc[i]>=20) A.markDown=A.ts[i]; }
+    // 135 cm hoogte-kruisingen: omhoog (voor piek) en omlaag (na piek)
+    if(Hh!=null){
+      for(let i=1;i<=peak;i++){ if(A.m135up===null && A.ht[i-1]<H135 && A.ht[i]>=H135) A.m135up=A.ts[i]; }
+      for(let i=peak+1;i<n;i++){ if(A.m135down===null && A.ht[i-1]>H135 && A.ht[i]<=H135) A.m135down=A.ts[i]; }
+    }
+    const vmax=parseFloat($("vmax").value)||20, amax=parseFloat($("amax").value)||40;
+    for(let i=0;i<n;i++){ A.maxV=Math.max(A.maxV,Math.abs(A.spd[i])); A.maxA=Math.max(A.maxA,Math.abs(A.acc[i])); }
+    A.failA=limitsOn()&&A.maxV>vmax; A.failB=limitsOn()&&A.maxA>amax;
+    $("valArc").textContent=A.arc[n-1].toFixed(1)+" cm";
+    $("valSpd").textContent=A.spd[n-1].toFixed(1)+" cm/s";
+    $("valHt").textContent=(Hh!=null)?A.ht[n-1].toFixed(1)+" cm":"H nodig";
+    $("valPeak").textContent=A.maxV.toFixed(1)+" / "+A.maxA.toFixed(1);
+  } else { $("valArc").textContent="—"; $("valSpd").textContent="—"; $("valHt").textContent="—"; $("valPeak").textContent="—"; }
+  setBanner();
+}
+function setBanner(){
+  const el=$("resultBanner"); el.className="banner";
+  if(!haveL()){ el.textContent="voer L in (of leg posities vast) voor beoordeling"; return; }
+  if(samples.length<3){ el.textContent="wacht op meetdata…"; return; }
+  if(A.failA||A.failB){ el.classList.add("fail"); let r=[];
+    if(A.failA) r.push("(A) max snelheid overschreden ("+A.maxV.toFixed(1)+" cm/s)");
+    if(A.failB) r.push("(B) max versnelling overschreden ("+A.maxA.toFixed(1)+" cm/s²)");
+    el.innerHTML="TEST GEFAALD<br>"+r.join("<br>"); }
+  else if(limitsOn()){ el.classList.add("ok"); el.textContent="BINNEN LIMIETEN ✓  (piek "+A.maxV.toFixed(1)+" cm/s, "+A.maxA.toFixed(1)+" cm/s²)"; }
+  else { el.classList.add("ok"); el.textContent="METING OK  (piek "+A.maxV.toFixed(1)+" cm/s, "+A.maxA.toFixed(1)+" cm/s²) — limietcontrole uit"; }
+}
+
+/* ---------------- export ---------------- */
+const r2=x=>(x==null||isNaN(x))?"":Math.round(x*100)/100;
+function metaRows(){
+  const res=!haveL()?"geen geometrie":((A.failA||A.failB)?("GEFAALD:"+(A.failA?" A-snelheid":"")+(A.failB?" B-versnelling":"")):"GESLAAGD");
+  const dt=(measStart||new Date());
+  return [
+    ["FAR-500 meting"],
+    ["Naam (Merk/Type)", $("naam").value],
+    ["Notities (Positie/Belasting)", $("notities").value],
+    ["Datum/tijd meting", dt.toLocaleString('nl-NL')],
+    ["Kalibratie", "3D-vector (2-punts justering 0°/45°)"],
+    ["Handvat hoog (cm)", r2(geo.yHigh), "hoek hoog (deg)", r2(geo.angHigh)],
+    ["Handvat laag (cm)", r2(geo.yLow), "hoek laag (deg)", r2(geo.angLow)],
+    ["L ingevoerd (cm)", r2(geo.Lman)],
+    ["L berekend (cm)", r2(geo.L)],
+    ["H ingevoerd (cm)", r2(geo.Hman)],
+    ["H berekend (cm)", r2(geo.H)],
+    ["Limiet-controle", limitsOn()?"aan":"uit"],
+    ["Max snelheid (cm/s)", limitsOn()?(parseFloat($("vmax").value)||""):""],
+    ["Max versnelling (cm/s2)", limitsOn()?(parseFloat($("amax").value)||""):""],
+    ["Markering 20cm omhoog (s)", r2(A.markUp)],
+    ["Markering 20cm omlaag (s)", r2(A.markDown)],
+    ["Markering 135cm omhoog (s)", r2(A.m135up)],
+    ["Markering 135cm omlaag (s)", r2(A.m135down)],
+    ["Resultaat", res],
+  ];
+}
+const DATA_HEADER=["t_s","angle_deg","force_N","arc_cm","speed_cm_s","accel_cm_s2","handle_height_cm"];
+function dataRow(i){ const hl=haveL();
+  return [ Math.round(samples[i].t/1000*100)/100, samples[i].deg, samples[i].N,
+    hl?r2(A.arc[i]):"", hl?r2(A.spd[i]):"", hl?r2(A.acc[i]):"", (hl&&haveHL())?r2(A.ht[i]):"" ]; }
+
+function fname(ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
+  return nm+"_"+new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)+"."+ext; }
+function download(name,blob){ const u=URL.createObjectURL(blob);
+  Object.assign(document.createElement("a"),{href:u,download:name}).click(); URL.revokeObjectURL(u); }
+
+$("btnCsv").onclick=()=>{
+  let out=[]; metaRows().forEach(r=>out.push("# "+r.join(",")));
+  out.push(""); out.push(DATA_HEADER.join(","));
+  for(let i=0;i<samples.length;i++) out.push(dataRow(i).join(","));
+  download(fname("csv"), new Blob([out.join("\r\n")],{type:"text/csv"}));
+};
+
+/* ---- XLSX (ingebouwde zip-schrijver, geen library nodig) ---- */
+$("btnXlsx").onclick=()=>{
+  const rows=[...metaRows(), [], DATA_HEADER];
+  for(let i=0;i<samples.length;i++) rows.push(dataRow(i));
+  download(fname("xlsx"), xlsxBlob(rows,"Meting"));
+};
+function xlsxBlob(rows,sheetName){ return xlsxWorkbook([{name:sheetName,rows}]); }
+// sheets: [{name, rows}, ...] -> 1 werkboek met 1 tabblad per entry, in volgorde.
+function xlsxWorkbook(sheets){
+  const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const colName=i=>{let s="";i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
+  const sheetXml=rows=>{
+    let sd="";
+    rows.forEach((row,ri)=>{ sd+='<row r="'+(ri+1)+'">';
+      row.forEach((v,ci)=>{ if(v===null||v===undefined||v==="") return; const ref=colName(ci)+(ri+1);
+        if(typeof v==="number"&&isFinite(v)) sd+='<c r="'+ref+'"><v>'+v+'</v></c>';
+        else sd+='<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+esc(v)+'</t></is></c>'; });
+      sd+='</row>'; });
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sd+'</sheetData></worksheet>';
+  };
+  const safeName=n=>{ const s=String(n).replace(/[:\\\/\?\*\[\]]/g,"_").slice(0,31); return s||"Blad"; };
+  const used={};
+  const S=sheets.map((s,i)=>{ let nm=safeName(s.name); let base=nm,k=2;
+    while(used[nm]){ nm=(base.slice(0,28)+"_"+k); k++; } used[nm]=true;
+    return {idx:i+1, name:nm, rows:s.rows}; });
+  const files=[
+    {name:"[Content_Types].xml",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+      '<Default Extension="xml" ContentType="application/xml"/>'+
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+      S.map(s=>'<Override PartName="/xl/worksheets/sheet'+s.idx+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("")+
+      '</Types>'},
+    {name:"_rels/.rels",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:"xl/workbook.xml",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+      '<sheets>'+S.map(s=>'<sheet name="'+esc(s.name)+'" sheetId="'+s.idx+'" r:id="rId'+s.idx+'"/>').join("")+'</sheets></workbook>'},
+    {name:"xl/_rels/workbook.xml.rels",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      S.map(s=>'<Relationship Id="rId'+s.idx+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+s.idx+'.xml"/>').join("")+
+      '</Relationships>'},
+  ];
+  S.forEach(s=>files.push({name:"xl/worksheets/sheet"+s.idx+".xml", str:sheetXml(s.rows)}));
+  const enc=new TextEncoder();
+  return new Blob([zipStore(files.map(f=>({name:f.name,bytes:enc.encode(f.str)})))],
+    {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+const CRCT=(()=>{let c,t=[];for(let n=0;n<256;n++){c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
+function crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=CRCT[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function zipStore(files){
+  const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  let local=[], central=[], offset=0;
+  const enc=new TextEncoder();
+  files.forEach(f=>{ const nameB=enc.encode(f.name), data=f.bytes, crc=crc32(data), sz=data.length;
+    const lh=[].concat(u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(sz),u32(sz),u16(nameB.length),u16(0));
+    local.push(new Uint8Array(lh),nameB,data);
+    const ch=[].concat(u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(sz),u32(sz),u16(nameB.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset));
+    central.push(new Uint8Array(ch),nameB);
+    offset+=lh.length+nameB.length+data.length; });
+  let cdSize=0; central.forEach(a=>cdSize+=a.length);
+  const eocd=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cdSize),u32(offset),u16(0)));
+  const all=[...local,...central,eocd]; let len=0; all.forEach(a=>len+=a.length);
+  const out=new Uint8Array(len); let o=0; all.forEach(a=>{out.set(a,o);o+=a.length;}); return out;
+}
+
+/* ================= GRAFIEKEN ================= */
+const tsC=$("tsCanvas"), xyC=$("xyCanvas");
+function fit(c){ const d=devicePixelRatio||1, r=c.getBoundingClientRect();
+  const cssH=Math.min(parseInt(c.dataset.h||"300",10),800);   // vaste hoogte, hard begrensd op 800
+  c.style.height=cssH+"px";
+  c.width=Math.max(1,Math.round(r.width*d)); c.height=Math.round(cssH*d);
+  const x=c.getContext("2d"); x.setTransform(1,0,0,1,0,0); x.scale(d,d);
+  return {x, w:r.width, h:cssH}; }
+window.addEventListener("resize",redraw);
+function axes(x,w,h,pad){ x.strokeStyle=getCol('--line'); x.lineWidth=1; x.beginPath(); x.moveTo(pad,8); x.lineTo(pad,h-22); x.lineTo(w-8,h-22); x.stroke(); }
+function getCol(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function redraw(){ drawTS(); drawXY(); }
+
+function drawTS(){
+  const {x,w,h}=fit(tsC); const pad=44; x.clearRect(0,0,w,h); axes(x,w,h,pad);
+  const n=samples.length; if(n<2) return;
+  const ts=samples.map(s=>s.t/1000), tmax=Math.max(ts[n-1],0.001), X=t=>pad+t/tmax*(w-pad-8);
+  const plot=(arr,col)=>{ const good=arr.filter(z=>z!==""&&!isNaN(z)); if(!good.length)return;
+    let lo=Math.min(...good),hi=Math.max(...good); if(hi===lo){hi+=1;lo-=1;}
+    x.strokeStyle=col; x.lineWidth=1.6; x.beginPath(); let st=false;
+    for(let i=0;i<n;i++){ const z=arr[i]; if(z===""||isNaN(z))continue;
+      const px=X(ts[i]), py=8+(1-(z-lo)/(hi-lo))*(h-30); st?x.lineTo(px,py):x.moveTo(px,py); st=true; } x.stroke(); };
+  plot(samples.map(s=>s.N), getCol('--cyan'));
+  plot(samples.map(s=>s.deg), getCol('--amber'));
+  if(haveL()){ plot(A.arc, getCol('--green')); plot(A.spd, getCol('--purple')); }
+  const mark=(t,label,col)=>{ if(t==null)return; const px=X(t); x.strokeStyle=col; x.lineWidth=1;
+    x.setLineDash([4,3]); x.beginPath(); x.moveTo(px,8); x.lineTo(px,h-22); x.stroke(); x.setLineDash([]);
+    x.fillStyle=col; x.font="10px ui-monospace,monospace"; x.fillText(label,px+2,16); };
+  const mk=getCol('--ink'); mark(A.markUp,"20↑",mk); mark(A.markDown,"20↓",mk);
+  mark(A.m135up,"135↑",getCol('--orange')); mark(A.m135down,"135↓",getCol('--orange'));
+  x.fillStyle=getCol('--dim'); x.font="11px ui-monospace,monospace";
+  x.fillText("0",pad-2,h-8); x.fillText(tmax.toFixed(1)+" s",w-46,h-8);
+  if(A.failA||A.failB){ x.fillStyle="rgba(229,86,75,.95)"; x.font="bold 12px ui-monospace,monospace";
+    x.fillText("GEFAALD"+(A.failA?" A":"")+(A.failB?" B":""), pad+6, 20); }
+}
+function drawXY(){
+  const {x,w,h}=fit(xyC); const pad=46; x.clearRect(0,0,w,h); axes(x,w,h,pad);
+  const pts=samples.filter(s=>s.N!==""&&!isNaN(s.N)&&!isNaN(s.deg)); if(!pts.length)return;
+  const ds=pts.map(p=>p.deg),ns=pts.map(p=>p.N);
+  let dlo=Math.min(...ds),dhi=Math.max(...ds); if(dhi===dlo){dhi+=1;dlo-=1;}
+  let nlo=Math.min(0,...ns),nhi=Math.max(...ns); if(nhi===nlo)nhi+=1;
+  // omgedraaid t.o.v. de bovenste grafiek: hoge hoek (bv. 45°) links, lage hoek (bv. 0°) rechts
+  const X=d=>pad+(dhi-d)/(dhi-dlo)*(w-pad-12), Y=nn=>8+(1-(nn-nlo)/(nhi-nlo))*(h-30);
+  x.strokeStyle=getCol('--cyan'); x.lineWidth=1.4; x.globalAlpha=.55; x.beginPath();
+  pts.forEach((p,i)=>i?x.lineTo(X(p.deg),Y(p.N)):x.moveTo(X(p.deg),Y(p.N))); x.stroke(); x.globalAlpha=1;
+  x.fillStyle=getCol('--cyan'); pts.forEach(p=>{x.beginPath();x.arc(X(p.deg),Y(p.N),2.2,0,7);x.fill();});
+  x.fillStyle=getCol('--dim'); x.font="11px ui-monospace,monospace";
+  x.fillText("hoek (°)",w-60,h-6); x.fillText(nhi.toFixed(0)+" N",6,14);
+  x.fillText(dhi.toFixed(0)+"°",pad-4,h-8); x.fillText(dlo.toFixed(0)+"°",w-30,h-8);
+}
+redraw();
+(function(){ const tb=document.getElementById("themeToggle");
+  function apply(light){ document.body.classList.toggle("light",light);
+    tb.textContent = light ? "\u263e" : "\u2600";
+    try{ localStorage.setItem("far500theme", light?"light":"dark"); }catch(e){}
+    redraw(); }
+  tb.onclick=()=>apply(!document.body.classList.contains("light"));
+  let init=false; try{ init=localStorage.getItem("far500theme")==="light"; }catch(e){}
+  apply(init);
+})();
+(function(){ const c=document.getElementById("compat");
+  if(!navigator.bluetooth){ c.className="compat bad";
+    c.innerHTML="&#9888; Deze browser ondersteunt geen Web Bluetooth. Gebruik <b>Chrome</b> of <b>Edge</b> (desktop of Android). "+
+      "<b>Firefox</b> en <b>Safari/iOS</b> werken niet \u2014 op iPhone/iPad kan het via de app <b>Bluefy</b>.";
+    const b=document.getElementById("btnConnect"); if(b){ b.disabled=true; b.textContent="Niet ondersteund"; }
+  }})();
+</script>
+</body>
+</html>
