@@ -78,6 +78,7 @@
   .collapsible{max-height:0;overflow:hidden;opacity:0;transition:max-height .25s ease,opacity .2s ease}
   .collapsible.open{max-height:160px;opacity:1}
 
+  body.standard .adv-only{display:none !important}
   .compat{display:none}
   .compat.bad{display:block;background:rgba(229,86,75,.15);border-bottom:1px solid var(--bad);
               color:#ffd0cc;padding:11px 22px;font-size:13px;line-height:1.5}
@@ -98,6 +99,10 @@
   <div class="mark"></div><h1>FAR-500</h1>
   <span class="status"><span class="dot" id="dot"></span><span id="connTxt">niet verbonden</span></span>
   <span class="sub">kracht · hoek · afstand · snelheid</span>
+  <div class="seg" id="modeSeg" style="width:160px;flex-shrink:0">
+    <button id="modeStd" title="Eenvoudige weergave">Standard</button>
+    <button id="modeAdv" title="Alle functies zichtbaar">Advanced</button>
+  </div>
   <button id="themeToggle" class="theme-btn" title="Licht / donker">☀</button>
 </header>
 <div id="compat"></div>
@@ -126,13 +131,14 @@
       <button id="btnTare" disabled>Tare 0°</button>
       <button id="btnStop" disabled>Stop</button>
       <button id="btnStart" class="primary" disabled>Start meting</button>
-      <button id="btnClear" class="danger" disabled>Wis device</button>
+      <button id="btnClear" class="danger adv-only" disabled>Wis device</button>
       <button id="btnXlsx" class="primary wide" disabled>Download XLSX</button>
-      <button id="btnXlsxGh" class="wide" disabled>Naar GitHub</button>
+      <button id="btnXlsxGh" class="wide adv-only" disabled>Naar GitHub</button>
       <button id="btnCsv" disabled>Download CSV</button>
-      <button id="btnDump" disabled>Device-log</button>
+      <button id="btnDump" class="adv-only" disabled>Device-log</button>
     </div>
     <div class="hint" id="ghStatus"></div>
+    <div class="hint" id="dlFallback"></div>
 
     <div class="card">
       <h3>Meting</h3>
@@ -140,13 +146,13 @@
       <div class="field"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. laag, 200 N"></div>
     </div>
 
-    <div class="card">
+    <div class="card adv-only">
       <h3>GitHub-upload</h3>
       <div class="field"><label>Upload-code</label><input id="ghSecret" type="password" placeholder="code"></div>
       <div class="hint">Voor de knoppen "Naar GitHub" bij de exports. Wordt alleen op dit toestel bewaard (localStorage).</div>
     </div>
 
-    <div class="card">
+    <div class="card adv-only">
       <h3>Handvat-posities → geometrie</h3>
       <div class="field">
         <label>Handvat HOOG (cm)</label>
@@ -165,7 +171,7 @@
       <div class="hint" id="geoHint">Werkelijke waarden hebben voorrang op de berekende voor afstand/hoogte.</div>
     </div>
 
-    <div class="card">
+    <div class="card adv-only">
       <h3>Limieten & live</h3>
       <label class="toggle"><input type="checkbox" id="limitsEnabled" checked>Snelheid/versnelling-limiet controleren</label>
       <div class="collapsible open" id="limitsFields">
@@ -202,7 +208,7 @@
       <h2>Kracht vs. hoek</h2>
       <canvas id="xyCanvas" data-h="300"></canvas>
     </div>
-    <div class="chart-wrap" id="histWrap">
+    <div class="chart-wrap adv-only" id="histWrap">
       <h2>Geschiedenis — laatste metingen op device</h2>
       <div class="btns" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
         <button id="btnHistImport" disabled>Importeer geschiedenis</button>
@@ -210,6 +216,7 @@
         <button id="btnHistXlsxGh" disabled>Naar GitHub</button>
       </div>
       <div class="hint" id="histGhStatus"></div>
+      <div class="hint" id="histDlFallback"></div>
       <div id="histList" class="hint">nog niet geïmporteerd — verbind en klik op "Importeer geschiedenis".</div>
     </div>
   </section>
@@ -266,8 +273,17 @@ $("btnTare").onclick =()=>send("TARE");
 $("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); send("START"); running=true; updateRun(); redraw(); };
 $("btnStop").onclick =()=>{ send("STOP"); running=false; updateRun(); };
 $("btnClear").onclick=()=>{ if(confirm("Device-log wissen?")) send("CLEAR"); };
-$("btnDump").onclick =()=>{ dumpMode="raw"; dumpLines=[]; dumping=true; send("DUMP"); };
-$("btnHistImport").onclick=()=>{ dumpMode="history"; dumpLines=[]; dumping=true; send("DUMP"); };
+$("btnDump").onclick =()=>{ dumpMode="raw"; dumpLines=[]; dumping=true; send("DUMP"); armDumpTimeout(); };
+$("btnHistImport").onclick=()=>{ dumpMode="history"; dumpLines=[]; dumping=true; send("DUMP"); armDumpTimeout(); };
+let dumpTimer=null;
+// zonder ack/flow-control op de DUMP-stream (zie firmware logDumpBle()) kan een
+// weggevallen notify de import voor altijd laten hangen zonder foutmelding --
+// deze timeout breekt af zodra er 5s niets meer binnenkomt.
+function armDumpTimeout(){
+  clearTimeout(dumpTimer);
+  dumpTimer=setTimeout(()=>{ if(dumping){ dumping=false;
+    alert("Download afgebroken: er kwam 5s geen data meer binnen van het device (verbinding of BLE-overdracht haperde). Probeer opnieuw."); } },5000);
+}
 $("btnResetRange").onclick=()=>{ diag.xmin=diag.ymin=diag.zmin=1e9; diag.xmax=diag.ymax=diag.zmax=-1e9; updateDiag(); };
 function updateRun(){ $("runState").textContent=running?"loopt":"gestopt";
   $("btnStart").disabled=!ctrlChar||running; $("btnStop").disabled=!running; }
@@ -332,6 +348,7 @@ function onData(e){
   const p=dec.decode(e.target.value).trim().split(",");
   if(p.length<3) return;
   const t=+p[0],deg=parseFloat(p[1]),N=parseFloat(p[2]),bat=p[3]!==undefined?+p[3]:null;
+  if(isNaN(t)) return;   // afgekapte/kapotte notify (bv. BLE-MTU-glitch) -- negeer i.p.v. de grafiek te breken
   const devLogging=p.length>=8?(+p[7]===1):null;   // 8e veld: logt device nu (0/1)? ontbreekt bij oudere firmware
   liveAngle=deg;
   $("angleVal").textContent=isNaN(deg)?"—":deg.toFixed(1);
@@ -363,13 +380,13 @@ function updateDiag(){
   const rng=(mn,mx,id)=>$(id).textContent=(mx<mn)?"":("["+mn.toFixed(1)+"…"+mx.toFixed(1)+"  Δ"+(mx-mn).toFixed(1)+"]");
   rng(diag.xmin,diag.xmax,"rngX"); rng(diag.ymin,diag.ymax,"rngY"); rng(diag.zmin,diag.zmax,"rngZ");
 }
-function onLog(e){ const line=dec.decode(e.target.value);
-  if(line.trim()==="<<EOF>>"){ dumping=false;
+function onLog(e){ if(!dumping) return; const line=dec.decode(e.target.value);
+  if(line.trim()==="<<EOF>>"){ dumping=false; clearTimeout(dumpTimer);
     if(dumpMode==="history"){ importHistory(dumpLines); }
     else if(dumpLines.length) download("device_log.csv",new Blob([dumpLines.join("\r\n")],{type:"text/csv"}));
     else alert("Device-log is leeg.");
     return; }
-  if(dumping) dumpLines.push(line); }
+  dumpLines.push(line); armDumpTimeout(); }
 
 /* ---------------- geschiedenis ---------------- */
 // Het device markeert het begin van elke meting in het gecombineerde
@@ -425,7 +442,7 @@ function buildHistoryXlsx(){
   });
   return {blob:xlsxWorkbook(sheets), name:tsStamp()+"_far500_geschiedenis.xlsx"};
 }
-$("btnHistXlsx").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); download(f.name,f.blob); };
+$("btnHistXlsx").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); download(f.name,f.blob,"histDlFallback"); };
 $("btnHistXlsxGh").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); uploadToGitHub(f.blob,f.name,"histGhStatus","btnHistXlsxGh"); };
 
 /* ---------------- analyse ---------------- */
@@ -513,8 +530,24 @@ function tsStamp(){ const d=new Date(), p=n=>String(n).padStart(2,"0");
   return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
 function fname(ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
   return tsStamp()+"_"+nm+"."+ext; }
-function download(name,blob){ const u=URL.createObjectURL(blob);
-  Object.assign(document.createElement("a"),{href:u,download:name}).click(); URL.revokeObjectURL(u); }
+function download(name,blob,fallbackId){
+  const u=URL.createObjectURL(blob);
+  const a=Object.assign(document.createElement("a"),{href:u,download:name});
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(u);
+  showDownloadFallback(name,blob,fallbackId||"dlFallback");
+}
+// Bluefy en vergelijkbare minimale iOS-webviews tonen vaak geen download-dialoog
+// bij een synthetic <a download>-click (er gebeurt dan zichtbaar niets). Toon
+// daarom ook altijd een zichtbare data:-link, die je op iOS met een lange tik
+// kunt opslaan via "Bewaar bestand" / delen -- werkt ongeacht webview-support.
+function showDownloadFallback(name,blob,elId){
+  const el=$(elId); if(!el) return;
+  const reader=new FileReader();
+  reader.onload=()=>{ el.innerHTML='Bestand niet vanzelf gedownload (bv. in Bluefy)? Tik lang op deze link en kies "Bewaar bestand"/"Delen": '+
+    '<a href="'+reader.result+'" download="'+name+'" style="color:var(--cyan)">'+name+'</a>'; };
+  reader.readAsDataURL(blob);
+}
 
 $("btnCsv").onclick=()=>{
   let out=[]; metaRows().forEach(r=>out.push("# "+r.join(",")));
@@ -652,6 +685,17 @@ redraw();
   tb.onclick=()=>apply(!document.body.classList.contains("light"));
   let init=false; try{ init=localStorage.getItem("far500theme")==="light"; }catch(e){}
   apply(init);
+})();
+(function(){ const stdBtn=$("modeStd"), advBtn=$("modeAdv");
+  function apply(standard){
+    document.body.classList.toggle("standard",standard);
+    stdBtn.classList.toggle("active",standard); advBtn.classList.toggle("active",!standard);
+    try{ localStorage.setItem("far500mode", standard?"standard":"advanced"); }catch(e){}
+    redraw();
+  }
+  stdBtn.onclick=()=>apply(true); advBtn.onclick=()=>apply(false);
+  let standard=true; try{ const v=localStorage.getItem("far500mode"); if(v) standard=v==="advanced"?false:true; }catch(e){}
+  apply(standard);
 })();
 (function(){ const c=document.getElementById("compat");
   if(!navigator.bluetooth){ c.className="compat bad";

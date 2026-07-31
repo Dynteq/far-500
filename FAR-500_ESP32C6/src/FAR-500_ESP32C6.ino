@@ -98,7 +98,7 @@ float curRaw=NAN;                // ruwe Z-hoek, alleen live-indicatie tijdens j
 float lastForce=NAN;
 float batV=0; int batPct=0; int fsFreePct=100;
 bool  logging=false; uint32_t runStartMs=0;
-uint16_t measNum=0;   // meting-volgnummer, telt op vanaf 1 bij elke START, reset bij herstart (niet persistent)
+uint16_t measNum=0;   // meting-volgnummer, telt op vanaf 1 bij elke START, persistent over herstarts heen
 File  logFile; bool logOpen=false;
 volatile bool reqTare=false, reqDump=false, reqClear=false;
 
@@ -213,6 +213,7 @@ void updateFsFree(){ size_t tot=LittleFS.totalBytes(), used=LittleFS.usedBytes()
 void toggleLogging(){
   if(!logging){
     logging=true; runStartMs=millis(); measNum++;
+    prefs.putUShort("measNum",measNum);
     logOpenW();
     // markeert het begin van deze meting in het gecombineerde logbestand, zodat
     // de laptop-UI de geschiedenis kan opsplitsen per meting bij het importeren.
@@ -346,6 +347,7 @@ void setup(){
   ref0[0]=prefs.getFloat("r0x",ref0[0]); ref0[1]=prefs.getFloat("r0y",ref0[1]); ref0[2]=prefs.getFloat("r0z",ref0[2]);
   axisV[0]=prefs.getFloat("axx",axisV[0]); axisV[1]=prefs.getFloat("axy",axisV[1]); axisV[2]=prefs.getFloat("axz",axisV[2]);
   gainV=prefs.getFloat("gv",gainV);
+  measNum=prefs.getUShort("measNum",0);
   vNorm(ref0); vNorm(axisV);
 
   Wire.begin(I2C_SDA,I2C_SCL);
@@ -363,6 +365,11 @@ void setup(){
                   (unsigned)tot,(unsigned)used,fsFreePct,minLeft); }
 
   NimBLEDevice::init(DEVICE_NAME); NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+  // Zonder MTU-onderhandeling blijft de ATT-MTU op de default 23 byte (20 byte
+  // payload). De telemetrieregel groeit zodra "t" (ms sinds start) meer cijfers
+  // krijgt en gaat dan over die grens -> notify wordt stilzwijgend afgekapt,
+  // wat de grafiek in de UI liet haperen/verdwijnen zodra een meting startte.
+  NimBLEDevice::setMTU(185);
   NimBLEServer* srv=NimBLEDevice::createServer(); srv->setCallbacks(new SrvCB());
   NimBLEService* svc=srv->createService(SERVICE_UUID);
   pData=svc->createCharacteristic(DATA_UUID, NIMBLE_PROPERTY::NOTIFY);
