@@ -271,11 +271,45 @@ function setConnected(on,name){
   ["btnTare","btnStart","btnClear","btnDump","btnHistImport"].forEach(id=>$(id).disabled=!on);
   $("btnStop").disabled=true; $("btnConnect").textContent=on?"Verbonden":"Verbinden"; $("btnConnect").disabled=on;
 }
-function onDisconnect(){ setConnected(false); running=false; updateRun(); $("btnConnect").disabled=false; }
+function onDisconnect(){ setConnected(false); running=false; updateRun(); $("btnConnect").disabled=false; keepAwakeStop(); }
 async function send(cmd){ if(ctrlChar) await ctrlChar.writeValue(new TextEncoder().encode(cmd)); }
 $("btnTare").onclick =()=>send("TARE");
-$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); send("START"); running=true; updateRun(); redraw(); };
-$("btnStop").onclick =()=>{ send("STOP"); running=false; updateRun(); };
+$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); send("START"); running=true; updateRun(); redraw(); keepAwakeStart(); };
+$("btnStop").onclick =()=>{ send("STOP"); running=false; updateRun(); keepAwakeStop(); };
+
+/* ---------------- scherm actief houden tijdens een meting ---------------- */
+// Vooral op iOS (en embedded webviews zoals Bluefy) kan het scherm vergrendelen
+// tijdens een meting de pagina zwaar drosselen of de BLE-verbinding verbreken.
+// Twee lagen, allebei geprobeerd zodat het werkt ongeacht wat de browser/webview
+// ondersteunt:
+//  1) de officiële Wake Lock API (Safari 16.4+, desktop Chrome/Edge)
+//  2) fallback: een stil, muted <video> gevoed door canvas.captureStream() --
+//     de klassieke techniek (ook door NoSleep.js gebruikt) die ook in oudere of
+//     embedded webviews zonder Wake Lock-ondersteuning het scherm wakker houdt.
+let wakeLock=null, keepAwakeVideo=null;
+function ensureKeepAwakeVideo(){
+  if(keepAwakeVideo) return keepAwakeVideo;
+  const c=document.createElement("canvas"); c.width=2; c.height=2;
+  const cx=c.getContext("2d");
+  setInterval(()=>{ cx.fillStyle=(Date.now()%2000<1000)?"#000":"#010101"; cx.fillRect(0,0,2,2); },1000);
+  const v=document.createElement("video");
+  v.muted=true; v.loop=true; v.setAttribute("playsinline",""); v.setAttribute("webkit-playsinline","");
+  v.style.cssText="position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;pointer-events:none";
+  try{ v.srcObject=c.captureStream(1); }catch(e){}
+  document.body.appendChild(v);
+  keepAwakeVideo=v; return v;
+}
+async function keepAwakeStart(){
+  try{ if("wakeLock" in navigator) wakeLock=await navigator.wakeLock.request("screen"); }catch(e){}
+  try{ await ensureKeepAwakeVideo().play(); }catch(e){}
+}
+function keepAwakeStop(){
+  try{ if(wakeLock){ wakeLock.release(); wakeLock=null; } }catch(e){}
+  try{ if(keepAwakeVideo) keepAwakeVideo.pause(); }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="visible" && running) keepAwakeStart();
+});
 $("btnClear").onclick=()=>{ if(confirm("Device-log wissen?")) send("CLEAR"); };
 $("btnDump").onclick =()=>{ dumpMode="raw"; dumpLines=[]; dumping=true; send("DUMP"); armDumpTimeout(); };
 $("btnHistImport").onclick=()=>{ dumpMode="history"; dumpLines=[]; dumping=true; send("DUMP"); armDumpTimeout(); };
@@ -376,8 +410,8 @@ function onData(e){
   // die de UI niet zelf initieerde.
   if(devLogging!==null){
     if(lastDevLogging!==null && devLogging!==lastDevLogging){
-      if(devLogging && !running){ samples=[]; resetAnalysis(); measStart=new Date(); running=true; updateRun(); redraw(); }
-      else if(!devLogging && running){ running=false; updateRun(); }
+      if(devLogging && !running){ samples=[]; resetAnalysis(); measStart=new Date(); running=true; updateRun(); redraw(); keepAwakeStart(); }
+      else if(!devLogging && running){ running=false; updateRun(); keepAwakeStop(); }
     }
     lastDevLogging=devLogging;
   }
