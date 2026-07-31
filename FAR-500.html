@@ -50,7 +50,7 @@
   button:disabled{opacity:.35;cursor:not-allowed}
   button.primary{background:var(--cyan);color:#04181c;border-color:var(--cyan);font-weight:600}
   button.danger{color:var(--bad);border-color:#3a2a2a}
-  button.wide{grid-column:1 / -1}
+  .wide{grid-column:1 / -1}
   .field{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px}
   .field label{color:var(--dim);width:118px;flex-shrink:0}
   .field input{flex:1;min-width:0;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);
@@ -133,7 +133,11 @@
       <button id="btnStart" class="primary" disabled>Start meting</button>
       <button id="btnClear" class="danger adv-only" disabled>Wis device</button>
       <button id="btnXlsx" class="primary wide" disabled>Download XLSX</button>
-      <button id="btnXlsxGh" class="wide adv-only" disabled>Naar GitHub</button>
+      <div class="field wide adv-only" id="ghSecretField">
+        <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code">
+      </div>
+      <div class="hint wide adv-only" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
+      <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
       <button id="btnCsv" disabled>Download CSV</button>
       <button id="btnDump" class="adv-only" disabled>Device-log</button>
     </div>
@@ -144,12 +148,6 @@
       <h3>Meting</h3>
       <div class="field"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Dubbeldek-rek / type_A"></div>
       <div class="field"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. laag, 200 N"></div>
-    </div>
-
-    <div class="card adv-only">
-      <h3>GitHub-upload</h3>
-      <div class="field"><label>Upload-code</label><input id="ghSecret" type="password" placeholder="code"></div>
-      <div class="hint">Voor de knoppen "Naar GitHub" bij de exports. Wordt alleen op dit toestel bewaard (localStorage).</div>
     </div>
 
     <div class="card adv-only">
@@ -213,7 +211,7 @@
       <div class="btns" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
         <button id="btnHistImport" disabled>Importeer geschiedenis</button>
         <button id="btnHistXlsx" class="primary" disabled>Download Excel</button>
-        <button id="btnHistXlsxGh" disabled>Naar GitHub</button>
+        <button id="btnHistXlsxGh" disabled>Upload naar GitHub</button>
       </div>
       <div class="hint" id="histGhStatus"></div>
       <div class="hint" id="histDlFallback"></div>
@@ -315,9 +313,16 @@ $("capLow").onclick=()=>{ const y=parseFloat($("yLow").value);
   cb.checked=init; apply(init);
 })();
 function limitsOn(){ return $("limitsEnabled").checked; }
-(function(){ const inp=$("ghSecret");
-  try{ const v=localStorage.getItem("far500ghsecret"); if(v) inp.value=v; }catch(e){}
+(function(){ const inp=$("ghSecret"), field=$("ghSecretField"), saved=$("ghSecretSaved"), change=$("ghSecretChange");
+  function showSaved(){ field.style.display="none"; saved.style.display="block"; }
+  function showField(){ field.style.display=""; saved.style.display="none"; inp.focus(); }
+  try{ const v=localStorage.getItem("far500ghsecret"); if(v){ inp.value=v; showSaved(); } }catch(e){}
   inp.addEventListener("input",()=>{ try{ localStorage.setItem("far500ghsecret", inp.value); }catch(e){} });
+  // Verberg het code-veld zodra er iets is ingevuld en het veld de focus
+  // verliest -- de code blijft lokaal bewaard (localStorage), "wijzigen"
+  // toont het veld weer terug.
+  inp.addEventListener("blur",()=>{ if(inp.value.trim()) showSaved(); });
+  change.onclick=(e)=>{ e.preventDefault(); showField(); };
 })();
 async function uploadToGitHub(blob,filename,statusElId,btnId){
   const statusEl=$(statusElId), btn=btnId?$(btnId):null;

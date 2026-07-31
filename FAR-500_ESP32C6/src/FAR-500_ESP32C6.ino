@@ -294,6 +294,36 @@ void drawBluetooth(int x,int y,bool connected){
   oled.drawLine(x+3,y+8,x+6,y+6); oled.drawLine(x+6,y+6,x,y+2);
   if(!connected) oled.drawLine(x-1,y+9,x+7,y-1);
 }
+// Eenvoudig pijltje (7 px breed, 10 px hoog): schacht + driehoekige punt.
+void drawArrow(int x,int y,bool up){
+  if(up){ oled.drawLine(x+3,y+9,x+3,y); oled.drawTriangle(x,y+3, x+6,y+3, x+3,y); }
+  else  { oled.drawLine(x+3,y,x+3,y+9); oled.drawTriangle(x,y+6, x+6,y+6, x+3,y+9); }
+}
+// Toont een hoek- of kracht-uitlezing: het gehele getal wordt rechts uitgelijnd
+// op X_DOT, zodat de decimaalpunt van hoek en kracht altijd verticaal gelijk
+// vallen. De decimaal + eenheid staan erachter in een kleiner lettertype.
+// useArrowSign: teken als pijl (omhoog/omlaag) links van het getal i.p.v. als
+// "+"/"-" in de tekst (gebruikt voor kracht: + = pijl omlaag, - = pijl omhoog).
+void drawReading(float val,int y,const char* unit,bool useArrowSign){
+  const int X_DOT=82;
+  oled.setFont(u8g2_font_logisoso18_tn);
+  char ip[8]; char dp[5]="";
+  if(isnan(val)){ strcpy(ip,"--"); }
+  else{
+    bool neg=val<0; float av=fabsf(val);
+    int whole=(int)av; int dec=(int)roundf((av-whole)*10.0f);
+    if(dec>=10){ dec=0; whole++; }
+    if(useArrowSign) snprintf(ip,sizeof(ip),"%d",whole);
+    else snprintf(ip,sizeof(ip),"%s%d",neg?"-":"",whole);
+    snprintf(dp,sizeof(dp),".%d",dec);
+    if(useArrowSign) drawArrow(X_DOT-oled.getStrWidth(ip)-15, y-14, neg);
+  }
+  int ipW=oled.getStrWidth(ip);
+  oled.drawStr(X_DOT-ipW,y,ip);
+  oled.setFont(u8g2_font_6x10_tf);
+  oled.drawStr(X_DOT,y,dp);
+  oled.drawStr(X_DOT+oled.getStrWidth(dp)+1,y,unit);
+}
 void drawOled(float angle){
   oled.clearBuffer();
   if(mode==M_CAL1 || mode==M_CAL2){
@@ -314,17 +344,21 @@ void drawOled(float angle){
   oled.drawStr(0,9,"HOEK");
   char b[8]; if(batPct<0) strcpy(b,"USB"); else snprintf(b,sizeof(b),"%d%%",batPct);
   oled.drawStr(128-oled.getStrWidth(b),9,b);
-  char a[12]; if(isnan(angle)) strcpy(a,"--.-"); else snprintf(a,sizeof(a),"%.1f",angle);
-  oled.setFont(u8g2_font_logisoso24_tn); oled.drawStr(0,40,a);
-  oled.setFont(u8g2_font_6x10_tf); oled.drawStr(oled.getStrWidth(a)+2,22,"\xb0");
   // meting-volgnummer: vierkant rechtsboven, naast de hoek, nummer rechts uitgelijnd erin
   oled.setFont(u8g2_font_5x7_tf);
   char mnum[6]; if(measNum>0) snprintf(mnum,sizeof(mnum),"%u",measNum); else strcpy(mnum,"-");
   const int mbW=26, mbH=12, mbX=127-mbW, mbY=12;
   oled.drawFrame(mbX,mbY,mbW,mbH);
   oled.drawStr(mbX+mbW-2-oled.getStrWidth(mnum), mbY+9, mnum);
-  char f[16]; if(isnan(lastForce)) strcpy(f,"F  ---  N"); else snprintf(f,sizeof(f),"F %+.1f N",lastForce);
-  oled.setFont(u8g2_font_7x13B_tf); oled.drawStr(0,54,f);
+  // Hoek: minder agressief tonen -- afgevlakt (EMA) en afgerond op 0,5 graad,
+  // alleen voor dit OLED-scherm (BLE-telemetrie/logging blijven ongefilterd).
+  static float oledAngleFilt=NAN;
+  if(!isnan(angle)) oledAngleFilt = isnan(oledAngleFilt)?angle:(oledAngleFilt*0.75f+angle*0.25f);
+  float dispAngle = isnan(oledAngleFilt)?NAN:roundf(oledAngleFilt*2.0f)/2.0f;
+  // Hoek en kracht: zelfde lettergrootte, decimaalpunt verticaal uitgelijnd
+  // (zie drawReading hierboven).
+  drawReading(dispAngle, 32, "\xb0", false);
+  drawReading(lastForce, 54, "N", true);
   if(logging){
     int phase=(millis()/1000)%3;                 // elke seconde wisselen
     oled.setFont(u8g2_font_5x7_tf);
