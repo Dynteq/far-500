@@ -238,6 +238,12 @@ let measHistory=[];   // geïmporteerde meting-geschiedenis: [{num,n,durS,rows:[
 let diag={x:NaN,y:NaN,z:NaN,xmin:1e9,xmax:-1e9,ymin:1e9,ymax:-1e9,zmin:1e9,zmax:-1e9};
 const dec=new TextDecoder(), $=id=>document.getElementById(id);
 const dot=$("dot"), connTxt=$("connTxt");
+// Vroeg gedeclareerd (i.p.v. pas in de GRAFIEKEN-sectie verderop): de
+// "Limieten & live"-instelling hieronder roept bij het laden van de pagina
+// meteen redraw()->drawTS() aan, die tsC/xyC nodig heeft. Stonden ze pas later
+// gedeclareerd, dan gooide dat een TDZ-ReferenceError die de rest van het
+// script (incl. licht/donker-knop en Standard/Advanced-knop) liet afbreken.
+const tsC=$("tsCanvas"), xyC=$("xyCanvas");
 
 let geo={yHigh:null,angHigh:null,yLow:null,angLow:null,L:null,H:null,Lman:null,Hman:null,valid:false};
 let A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false};
@@ -627,7 +633,6 @@ function zipStore(files){
 }
 
 /* ================= GRAFIEKEN ================= */
-const tsC=$("tsCanvas"), xyC=$("xyCanvas");
 function fit(c){ const d=devicePixelRatio||1, r=c.getBoundingClientRect();
   const cssH=Math.min(parseInt(c.dataset.h||"300",10),800);   // vaste hoogte, hard begrensd op 800
   c.style.height=cssH+"px";
