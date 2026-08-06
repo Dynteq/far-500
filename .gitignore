@@ -4,6 +4,13 @@ FAR-500_ESP32C6/.pio/
 # Wrangler (Cloudflare Worker) lokale cache
 far500-upload-worker/.wrangler/
 
+# Python (far500-force-check) — venv/build/cache
+far500-force-check/.venv/
+far500-force-check/**/*.egg-info/
+far500-force-check/build/
+**/__pycache__/
+.pytest_cache/
+
 # Lokale Claude Code permissie-instellingen (machine-specifiek, hoort niet gedeeld te worden)
 .claude/settings.local.json
 

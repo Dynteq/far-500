@@ -3,21 +3,29 @@
    Target : ESP32-C6 SuperMini (TinyTronics) - 18650 via schuifschakelaar
 
    v5 wijzigingen:
-     - GEEN as-schakelen meer. De justering (0 gr / 45 gr) legt de kantelas +
-       nulvector vast als volledige 3D-vectoren (ref0, axisV) i.p.v. 1 raw
-       as + scalaire offset/gain. De hoek wordt live berekend als de
-       (getekende) rotatiehoek van de actuele g-vector t.o.v. ref0, rond
-       axisV. Daardoor blijft de gemeten hoek zuiver, ook als de sensor met
-       een vaste scheefstand (bv. 10 gr op de X-as) gemonteerd zit.
+     - GEEN as-schakelen meer. De justering (0 gr / -45 gr, of -30 gr via de
+       dubbelklik-toggle) legt de kantelas + nulvector vast als volledige
+       3D-vectoren (ref0, axisV) i.p.v. 1 raw as + scalaire offset/gain. De
+       hoek wordt live berekend als de (getekende) rotatiehoek van de actuele
+       g-vector t.o.v. ref0, rond axisV. Daardoor blijft de gemeten hoek
+       zuiver, ook als de sensor met een vaste scheefstand (bv. 10 gr op de
+       X-as) gemonteerd zit.
+     - Stap2-doelhoek is negatief (was +45 gr) zodat alle hoekmetingen
+       (live, BLE-telemetrie, logging) van teken wisselen t.o.v. de vorige
+       conventie: `gainV = calTargetAngle/rawAngle` wordt daardoor negatief.
      - Ruwe hoeken X/Y/Z worden meegestuurd naar de laptop, puur als diagnose
        om te zien of de sensor scheef gaat staan. (stream: ms,deg,N,bat,rx,ry,rz)
        Het live cijfer tijdens justeren (rechtsboven op het CAL-scherm) toont
        de ruwe Z-hoek (was X-as).
 
    Drukknop (GPIO2 -> GND, INPUT_PULLUP):
-     - KORT (0,5-2 s) : meting START / STOP
-     - LANG (>=3 s)   : twee-punts justering (stap1 = 0 gr, stap2 = 45 gr)
-     - 2-3 s          : dode zone
+     - KORT (0,5-2 s)     : meting START / STOP
+     - LANG (>=3 s)       : twee-punts justering (stap1 = 0 gr, stap2 = -45 gr)
+     - ZEER KORT (2x, elk 0,05-0,3 s, binnen 0,4 s van elkaar), alleen tijdens
+       stap2 van de justering: toggle het justeerdoel tussen -45 gr en -30 gr
+       (nogmaals dubbelklikken schakelt terug naar -45 gr). Het actieve doel
+       staat live op het OLED-scherm ("Stap 2: -45/-30 graden").
+     - 2-3 s              : dode zone
 
    LIBRARIES: "NimBLE-Arduino" v2.x (getest 2.5.0), "U8g2"
    BOARD: esp32 by Espressif >= 3.0.x, "ESP32C6 Dev Module", USB CDC On Boot = On
@@ -32,8 +40,9 @@
 #include <math.h>
 
 /* ---------- meetas -----------------------------------------------------------
-   Geen vaste as meer. De justering (0 gr / 45 gr) legt de kantelas + nulvector
-   vast als volledige 3D-vectoren (i.p.v. 1 as + scalaire offset/gain). Daardoor
+   Geen vaste as meer. De justering (0 gr / -45 gr, of -30 gr via de
+   dubbelklik-toggle in stap2) legt de kantelas + nulvector vast als volledige
+   3D-vectoren (i.p.v. 1 as + scalaire offset/gain). Daardoor
    blijft de gemeten hoek zuiver, ook als de sensor met een vaste scheefstand
    (bv. 10 gr) op een andere as gemonteerd zit. --------------------------------*/
 
@@ -49,6 +58,9 @@
 #define BTN_PIN       2
 
 /* ---------- knop-timing (ms) ------------------------------------------------ */
+#define BTN_VSHORT_MIN      50    // "zeer korte" klik (dubbelklik-toggle in justering stap2)
+#define BTN_VSHORT_MAX      300
+#define BTN_DBLCLICK_GAP_MS 400   // max. tussentijd tussen de 2 klikjes van een dubbelklik
 #define BTN_SHORT_MIN 500
 #define BTN_SHORT_MAX 2000
 #define BTN_LONG      3000
@@ -104,6 +116,8 @@ volatile bool reqTare=false, reqDump=false, reqClear=false;
 
 int   mode=M_NORMAL;
 float calVec0[3]={0,0,0};
+float calTargetAngle=-45.0f;     // doelhoek justering stap2, toggle -45/-30 via dubbelklik
+uint32_t lastVShortAt=0;         // timestamp vorige "zeer korte" klik, voor dubbelklik-detectie
 char  msgL1[16]="", msgL2[16]=""; uint32_t msgUntil=0;
 bool  btnWas=false; uint32_t btnDownAt=0;
 
@@ -156,9 +170,14 @@ bool adxlRead(float &vx, float &vy, float &vz, float &rx, float &ry, float &rz){
    Eerste teken is een sign-flag: '1' = positief, alles anders = negatief.
    Rest is de zero-padded waarde met 1 decimaal, bv. "10005.5" = +5.5,
    "00003.3" = -3.3.
+   FORCE_SIGN: +1 => "+" (Sauter-sign '1') = omhoog optrekken/duwen, "-" =
+   omlaag. Nog niet fysiek gevalideerd op het gemonteerde device -- test na
+   upload (aan de goot trekken moet een positief getal geven) en zet op -1.0f
+   als het andersom is.
    Tijdelijke troubleshoot-hulp: print elke ruwe byte en elke ontvangen regel
    naar de USB-seriemonitor (115200), en waarschuw als er 3s niets binnenkomt.
    Zet SAUTER_DEBUG op 0 zodra de uitlezing stabiel werkt. */
+#define FORCE_SIGN 1.0f
 #define SAUTER_DEBUG 1
 #define SAUTER_FRAME_GAP_MS 20
 uint32_t tLastSauterByte=0;
@@ -168,7 +187,7 @@ void sauterParse(){
 #if SAUTER_DEBUG
   Serial.printf("[sauter] regel: \"%s\"\n", p);
 #endif
-  if(strlen(p)>=2){ char sg=p[0]; float mag=atof(p+1); lastForce=(sg=='1')?mag:-mag; }
+  if(strlen(p)>=2){ char sg=p[0]; float mag=atof(p+1); lastForce=FORCE_SIGN*((sg=='1')?mag:-mag); }
 }
 void sauterPoll(){
   while(Serial1.available()){
@@ -224,7 +243,8 @@ void toggleLogging(){
 
 /* ============================ DRUKKNOP ==================================== */
 void onBtn(uint32_t dur){
-  if(dur<120) return;
+  if(dur<BTN_VSHORT_MIN) return;
+  bool vsh=(dur>=BTN_VSHORT_MIN && dur<=BTN_VSHORT_MAX);
   bool sh=(dur>=BTN_SHORT_MIN && dur<=BTN_SHORT_MAX), lo=(dur>=BTN_LONG);
   if(mode==M_NORMAL){
     if(lo){ if(!logging) mode=M_CAL1; }
@@ -233,9 +253,20 @@ void onBtn(uint32_t dur){
     if(lo){ showMsg("JUSTERING","GEANNULEERD",2000); }
     else if(sh && !isnan(curVec[0])){
       calVec0[0]=curVec[0]; calVec0[1]=curVec[1]; calVec0[2]=curVec[2]; mode=M_CAL2;
+      calTargetAngle=-45.0f; lastVShortAt=0;   // elke justering start met -45 gr als default
     }
   } else if(mode==M_CAL2){
     if(lo){ showMsg("JUSTERING","GEANNULEERD",2000); }
+    else if(vsh){
+      // dubbelklik-toggle van het justeerdoel (-45/-30 gr); 2 losse "zeer korte"
+      // klikken binnen BTN_DBLCLICK_GAP_MS van elkaar schakelen om, een 3e
+      // snelle klik begint een nieuw paar i.p.v. door te blijven schakelen.
+      uint32_t now=millis();
+      if(lastVShortAt!=0 && now-lastVShortAt<=BTN_DBLCLICK_GAP_MS){
+        calTargetAngle=(calTargetAngle<-40.0f)?-30.0f:-45.0f;
+        lastVShortAt=0;
+      } else lastVShortAt=now;
+    }
     else if(sh && !isnan(curVec[0])){
       float axis[3]; vCross(calVec0,curVec,axis);
       float axisMag=sqrtf(vDot(axis,axis));
@@ -244,7 +275,7 @@ void onBtn(uint32_t dur){
         vNorm(axis);
         ref0[0]=calVec0[0]; ref0[1]=calVec0[1]; ref0[2]=calVec0[2];
         axisV[0]=axis[0]; axisV[1]=axis[1]; axisV[2]=axis[2];
-        gainV=45.0f/rawAngle;
+        gainV=calTargetAngle/rawAngle;
         prefs.putFloat("r0x",ref0[0]); prefs.putFloat("r0y",ref0[1]); prefs.putFloat("r0z",ref0[2]);
         prefs.putFloat("axx",axisV[0]); prefs.putFloat("axy",axisV[1]); prefs.putFloat("axz",axisV[2]);
         prefs.putFloat("gv",gainV);
@@ -329,9 +360,10 @@ void drawOled(float angle){
   if(mode==M_CAL1 || mode==M_CAL2){
     oled.setFont(u8g2_font_6x10_tf);
     oled.drawStr(0,10, mode==M_CAL1?"JUSTEREN 1/2":"JUSTEREN 2/2");
-    oled.drawStr(0,28, mode==M_CAL1?"Stap 1: 0 graden":"Stap 2: 45 graden");
+    if(mode==M_CAL1) oled.drawStr(0,28, "Stap 1: 0 graden");
+    else { char s2[20]; snprintf(s2,sizeof(s2),"Stap 2: %.0f graden",calTargetAngle); oled.drawStr(0,28,s2); }
     oled.drawStr(0,42, "waterpas, kort=OK");
-    oled.drawStr(0,58, "3s = annuleren");
+    oled.drawStr(0,58, mode==M_CAL2?"2x=-30/-45 3s=stop":"3s = annuleren");
     char r[12]; if(!isnan(curRaw)) snprintf(r,sizeof(r),"%.1f",curRaw); else strcpy(r,"--");
     oled.drawStr(128-oled.getStrWidth(r),10,r);
     oled.sendBuffer(); return;

@@ -58,8 +58,18 @@ Aan/uit = schuifschakelaar in 18650+ lijn (geen firmware nodig).
 FAR-500_ESP32C6/     PlatformIO-project (env esp32-c6-devkitm-1), sketch in src/
 FAR-500.html         Laptop-UI (Web Bluetooth), ook gehost via GitHub Pages
 far500-upload-worker/ Cloudflare Worker: relay voor "meting naar GitHub" upload
+far500-force-check/  Python-tool: bedienkracht-normtoetsing + XLSX/PDF-rapport
 CLAUDE.md            Projectcontext + upload-log voor AI-assisted development
 ```
+
+## Bedienkracht-normtoetsing
+
+Naast de firmware/UI toetst een los Python-subproject,
+[`far500-force-check/`](far500-force-check/), een meting-export (CSV/XLSX)
+aan de bedienkracht-eisen (C1-C4: kracht vs. handvathoogte, breakaway-marge,
+max. bedienhoogte, snelheid/versnelling) en genereert daar een opgemaakt
+XLSX-rapport (+ PDF via CI) van. Zie `far500-force-check/README.md` voor
+criteria, CLI-gebruik en de CI-workflow.
 
 ## Firmware bouwen & uploaden
 

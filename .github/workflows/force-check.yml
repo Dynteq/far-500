@@ -1,0 +1,66 @@
+name: force-check
+
+on:
+  push:
+    paths:
+      - "far500-force-check/**"
+      - ".github/workflows/force-check.yml"
+  pull_request:
+    paths:
+      - "far500-force-check/**"
+      - ".github/workflows/force-check.yml"
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: far500-force-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installeer far500-force-check + dev-dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Draai tests
+        run: pytest -q
+
+      - name: Genereer demo-rapport (synthetische fixture, geen echte device-export beschikbaar)
+        run: |
+          python -m far500_force_check tests/fixtures/sample_normal.csv \
+            -o far500-force-check-rapport.xlsx \
+            --print-only far500-force-check-setup_analyse.xlsx
+
+      - name: Installeer LibreOffice (voor XLSX->PDF-conversie)
+        run: sudo apt-get update && sudo apt-get install -y libreoffice-calc
+
+      - name: Render setup_analyse naar PDF
+        run: soffice --headless --norestore --convert-to pdf far500-force-check-setup_analyse.xlsx
+
+      - name: Upload build-artefacten
+        uses: actions/upload-artifact@v4
+        with:
+          name: far500-force-check-rapport
+          path: |
+            far500-force-check/far500-force-check-rapport.xlsx
+            far500-force-check/far500-force-check-setup_analyse.pdf
+          if-no-files-found: error
+
+      # Tag-afspraak: gebruik voor dit subproject een eigen releaseprefix
+      # (bv. force-check-v1.0.0) om verwarring te voorkomen met de bestaande
+      # `recordings`-tag die far500-upload-worker gebruikt voor meting-uploads.
+      - name: Upload naar GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            far500-force-check-rapport.xlsx \
+            far500-force-check-setup_analyse.pdf \
+            --clobber

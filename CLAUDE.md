@@ -17,6 +17,13 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
      - LittleFS                       (gecombineerde CSV /log.csv)
    Aan/uit = schuifschakelaar in 18650+ lijn (geen firmware nodig).
 
+   Optioneel (los van de hub): `far500-force-check/` is een Python
+   build-tool die een meting-export (CSV/XLSX) toetst aan de
+   bedienkracht-eisen (C1-C4: kracht vs. handvathoogte, breakaway-marge,
+   max. bedienhoogte, snelheid/versnelling) en daar een opgemaakt
+   XLSX-rapport (2 tabbladen: `setup_analyse` + `data`) + PDF (via CI) van
+   maakt. Zie `far500-force-check/README.md` voor criteria/constanten/CLI.
+
    Optioneel (los van de hub): `far500-upload-worker/` is een Cloudflare
    Worker die de "Naar GitHub"-knoppen in de laptop-UI bedient — zet een
    geüploade meting (.xlsx) door naar een GitHub Release-asset (tag
@@ -40,6 +47,48 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-06**: hoek-teken omgedraaid + justeer-toggle + vaste grafiek-assen + kracht-teken-constante.
+  - **Firmware**: justeerpunt stap2 gaat van +45° naar **-45°** (`calTargetAngle`,
+    `FAR-500_ESP32C6.ino`) — via `gainV = calTargetAngle/rawAngle` wisselen daardoor
+    automatisch alle toekomstige hoekmetingen (live, BLE, log) van teken. Nieuw:
+    tijdens stap2 kan met **2 zeer korte klikjes** (elk 50-300ms, binnen 400ms van
+    elkaar; `BTN_VSHORT_*`/`BTN_DBLCLICK_GAP_MS`) het justeerdoel getoggled worden
+    naar **-30°** (nogmaals dubbelklikken → terug naar -45°); het OLED-scherm toont
+    live welk doel actief is. Elke nieuwe justering (stap1→stap2) reset het doel
+    naar -45°. Ook toegevoegd: `FORCE_SIGN`-constante (default `+1.0f`) in
+    `sauterParse()` — **nog niet fysiek gevalideerd** dat "+" overeenkomt met
+    fysiek omhoog optrekken/duwen; test dit na upload (aan de goot trekken moet een
+    positief getal geven) en zet op `-1.0f` als het andersom is.
+  - **UI (`FAR-500.html`)**: de hoek-as (XY-grafiek) en de hoek/kracht-lijnen in de
+    tijd-grafiek gebruiken nu vaste assen i.p.v. automatisch op de meetdata
+    schalend: hoek **-50° (links) .. +5° (rechts)**, kracht **-250N .. +250N**
+    (`ANGLE_MIN/MAX`, `FORCE_MIN/MAX`). Waarden buiten die range worden bij het
+    tekenen geklemd (`clamp()`) op de rand i.p.v. van het canvas te verdwijnen.
+    De XY-grafiek se X-mapping is van "omgekeerd, data-gedreven" naar "gewoon
+    oplopend, vast" gegaan — dat geeft dankzij de tekenwissel dezelfde fysieke
+    links/rechts-oriëntatie als voorheen (fysiek hoge kanteling blijft links).
+    Gevalideerd met een jsdom-headless-run (dit environment heeft geen browser-tooling,
+    zelfde aanpak als bij eerdere UI-fixes): geen JS-fouten, constanten aanwezig,
+    clamp() getest op waarden buiten bereik —
+    **niet visueel in een browser bekeken**, graag zelf even de XY-grafiek en de
+    OLED-tekst tijdens justeren controleren.
+  - Compileren + uploaden naar COM10 gelukt met het gebruikelijke commando
+    (`$env:PLATFORMIO_CORE_DIR="C:\pio"; & "$HOME\.platformio\penv\Scripts\pio.exe" run -d "C:\DEV\FAR-500\FAR-500_ESP32C6" -t upload --upload-port COM10`).
+    Build: RAM 8.2%, Flash 62.9%.
+- **2026-08-06**: `far500-force-check/` toegevoegd — Python-tool (openpyxl) die een
+  meting-export toetst aan de bedienkracht-criteria C1-C4 en een XLSX+PDF-rapport
+  genereert; `.github/workflows/force-check.yml` bouwt/publiceert dit in CI. Twee
+  norm-interpretatiekeuzes zijn met de opdrachtgever afgestemd en vastgelegd in
+  `far500-force-check/README.md`: (1) het 20cm-breakaway-venster (150% marge) geldt
+  altijd vanaf het anker, ook zonder vroege overschrijding (anker=bewegingsstart is
+  dan alleen de positie van dat venster, niet de afwezigheid ervan); (2) de overige
+  aannames uit de oorspronkelijke opdracht (marge ook >135cm, toetsing op |force_N|,
+  >170cm=harde FAIL) zijn ongewijzigd overgenomen. Er was geen echte device-export
+  beschikbaar — alles is gebouwd/getest op synthetische fixtures
+  (`far500-force-check/tests/`); 1x valideren tegen een echte export is een
+  openstaand actiepunt vóór productiegebruik. Nog niet getest: de CI-workflow zelf
+  (LibreOffice-PDF-render) is alleen tegen de lokale mechanica gevalideerd, niet
+  live op GitHub Actions gedraaid.
 - "Naar GitHub"-upload (Cloudflare Worker relay) toegevoegd aan de UI, gedeployed en end-to-end getest (2026-07-30) — werkt met een classic PAT (zie Architectuur-sectie voor het waarom). Bestandsnamen (export + upload) beginnen nu met een `yyyymmdd_hhmmss`-tijdstempel.
 - Repo verplaatst van persoonlijk account (studiotijn) naar org `DynteqBV` (2026-07-30).
 - Later (nog niet actueel): GitHub-org hernoemen van `DynteqBV` naar `dynteq` zodra die naam vrijkomt (nu nog in gebruik door een collega).

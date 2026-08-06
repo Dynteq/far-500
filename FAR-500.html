@@ -672,6 +672,10 @@ function zipStore(files){
 }
 
 /* ================= GRAFIEKEN ================= */
+// Vaste assen (i.p.v. data-gedreven min/max) zodat de weergave niet meer per
+// meting van schaal wisselt: hoek -50°(links)..+5°(rechts), kracht -250..+250N.
+const ANGLE_MIN=-50, ANGLE_MAX=5, FORCE_MIN=-250, FORCE_MAX=250;
+const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 function fit(c){ const d=devicePixelRatio||1, r=c.getBoundingClientRect();
   const cssH=Math.min(parseInt(c.dataset.h||"300",10),800);   // vaste hoogte, hard begrensd op 800
   c.style.height=cssH+"px";
@@ -687,13 +691,15 @@ function drawTS(){
   const {x,w,h}=fit(tsC); const pad=44; x.clearRect(0,0,w,h); axes(x,w,h,pad);
   const n=samples.length; if(n<2) return;
   const ts=samples.map(s=>s.t/1000), tmax=Math.max(ts[n-1],0.001), X=t=>pad+t/tmax*(w-pad-8);
-  const plot=(arr,col)=>{ const good=arr.filter(z=>z!==""&&!isNaN(z)); if(!good.length)return;
-    let lo=Math.min(...good),hi=Math.max(...good); if(hi===lo){hi+=1;lo-=1;}
+  const plot=(arr,col,fixed)=>{ const good=arr.filter(z=>z!==""&&!isNaN(z)); if(!good.length)return;
+    let lo,hi;
+    if(fixed){ lo=fixed[0]; hi=fixed[1]; }
+    else { lo=Math.min(...good); hi=Math.max(...good); if(hi===lo){hi+=1;lo-=1;} }
     x.strokeStyle=col; x.lineWidth=1.6; x.beginPath(); let st=false;
-    for(let i=0;i<n;i++){ const z=arr[i]; if(z===""||isNaN(z))continue;
+    for(let i=0;i<n;i++){ let z=arr[i]; if(z===""||isNaN(z))continue; if(fixed) z=clamp(z,lo,hi);
       const px=X(ts[i]), py=8+(1-(z-lo)/(hi-lo))*(h-30); st?x.lineTo(px,py):x.moveTo(px,py); st=true; } x.stroke(); };
-  plot(samples.map(s=>s.N), getCol('--cyan'));
-  plot(samples.map(s=>s.deg), getCol('--amber'));
+  plot(samples.map(s=>s.N), getCol('--cyan'), [FORCE_MIN,FORCE_MAX]);
+  plot(samples.map(s=>s.deg), getCol('--amber'), [ANGLE_MIN,ANGLE_MAX]);
   if(haveL()){ plot(A.arc, getCol('--green')); plot(A.spd, getCol('--purple')); }
   const mark=(t,label,col)=>{ if(t==null)return; const px=X(t); x.strokeStyle=col; x.lineWidth=1;
     x.setLineDash([4,3]); x.beginPath(); x.moveTo(px,8); x.lineTo(px,h-22); x.stroke(); x.setLineDash([]);
@@ -708,17 +714,16 @@ function drawTS(){
 function drawXY(){
   const {x,w,h}=fit(xyC); const pad=46; x.clearRect(0,0,w,h); axes(x,w,h,pad);
   const pts=samples.filter(s=>s.N!==""&&!isNaN(s.N)&&!isNaN(s.deg)); if(!pts.length)return;
-  const ds=pts.map(p=>p.deg),ns=pts.map(p=>p.N);
-  let dlo=Math.min(...ds),dhi=Math.max(...ds); if(dhi===dlo){dhi+=1;dlo-=1;}
-  let nlo=Math.min(0,...ns),nhi=Math.max(...ns); if(nhi===nlo)nhi+=1;
-  // omgedraaid t.o.v. de bovenste grafiek: hoge hoek (bv. 45°) links, lage hoek (bv. 0°) rechts
-  const X=d=>pad+(dhi-d)/(dhi-dlo)*(w-pad-12), Y=nn=>8+(1-(nn-nlo)/(nhi-nlo))*(h-30);
+  // vaste assen: hoek ANGLE_MIN(links)..ANGLE_MAX(rechts), kracht FORCE_MIN(onder)..FORCE_MAX(boven)
+  const X=d=>pad+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*(w-pad-12);
+  const Y=nn=>8+(1-(clamp(nn,FORCE_MIN,FORCE_MAX)-FORCE_MIN)/(FORCE_MAX-FORCE_MIN))*(h-30);
   x.strokeStyle=getCol('--cyan'); x.lineWidth=1.4; x.globalAlpha=.55; x.beginPath();
   pts.forEach((p,i)=>i?x.lineTo(X(p.deg),Y(p.N)):x.moveTo(X(p.deg),Y(p.N))); x.stroke(); x.globalAlpha=1;
   x.fillStyle=getCol('--cyan'); pts.forEach(p=>{x.beginPath();x.arc(X(p.deg),Y(p.N),2.2,0,7);x.fill();});
   x.fillStyle=getCol('--dim'); x.font="11px ui-monospace,monospace";
-  x.fillText("hoek (°)",w-60,h-6); x.fillText(nhi.toFixed(0)+" N",6,14);
-  x.fillText(dhi.toFixed(0)+"°",pad-4,h-8); x.fillText(dlo.toFixed(0)+"°",w-30,h-8);
+  x.fillText("hoek (°)",w-60,h-6); x.fillText("+"+FORCE_MAX.toFixed(0)+" N",6,14);
+  x.fillText(FORCE_MIN.toFixed(0)+" N",6,h-20);
+  x.fillText(ANGLE_MIN.toFixed(0)+"°",pad-4,h-8); x.fillText("+"+ANGLE_MAX.toFixed(0)+"°",w-30,h-8);
 }
 redraw();
 (function(){ const tb=document.getElementById("themeToggle");
