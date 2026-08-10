@@ -5,6 +5,16 @@
 // klein voor de "Geschiedenis"-export. Het echte GitHub-token blijft hier
 // server-side (Worker-secret); de pagina kent alleen een gedeeld wachtwoord
 // om dit endpoint tegen misbruik te beschermen.
+//
+// GET /download?name=<asset> (2026-08-11 toegevoegd): idem maar dan de andere
+// kant op -- de "oude meting laden"-dropdown in de UI moet een eerder
+// geüploade asset weer kunnen terugladen. Ook dat kan niet rechtstreeks vanuit
+// de browser: de asset-redirect eindigt op release-assets.githubusercontent.com
+// (Azure Blob), en die respons heeft geen Access-Control-Allow-Origin-header
+// (bevestigd met curl -D-) -- dus blokkeert fetch() dat net als bij uploads.
+// Dit endpoint is bewust zonder X-Upload-Secret: het proxyt uitsluitend
+// reeds-publieke assets uit deze ene release (geen vrije URL-doorgifte), dus
+// er lekt niets dat niet al via de GitHub-UI/API voor iedereen zichtbaar is.
 
 const OWNER = "DynteqBV";
 const REPO = "far-500";
@@ -12,13 +22,46 @@ const TAG = "recordings";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, X-Upload-Secret, X-Filename",
 };
 
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    if (request.method === "GET") {
+      const url = new URL(request.url);
+      if (url.pathname !== "/download") return json({ ok: false, error: "not found" }, 404);
+      const name = url.searchParams.get("name") || "";
+      if (!name) return json({ ok: false, error: "missing name" }, 400);
+
+      const ghHeaders = {
+        "Authorization": `token ${env.GH_TOKEN}`,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "far500-upload-worker",
+      };
+      try {
+        const release = await getRelease(ghHeaders);
+        const asset = release && (release.assets || []).find((a) => a.name === name);
+        if (!asset) return json({ ok: false, error: "asset not found" }, 404);
+
+        const res = await fetch(asset.url, { headers: { ...ghHeaders, Accept: "application/octet-stream" } });
+        if (!res.ok) return json({ ok: false, error: `download failed (${res.status})` }, 502);
+        return new Response(res.body, {
+          status: 200,
+          headers: {
+            ...CORS,
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": `attachment; filename="${name.replace(/"/g, "")}"`,
+          },
+        });
+      } catch (e) {
+        return json({ ok: false, error: String((e && e.message) || e) }, 500);
+      }
+    }
+
     if (request.method !== "POST") return json({ ok: false, error: "method not allowed" }, 405);
 
     const secret = request.headers.get("X-Upload-Secret") || "";

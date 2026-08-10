@@ -47,6 +47,76 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-11**: bedienkracht-analyse (C1-C4) rechtstreeks in de laptop-UI
+  toegevoegd, op verzoek. Drie knoppen i.p.v. één: de bestaande "Download
+  XLSX" heet nu **"Meetgegevens XLSX"** (ongewijzigd gedrag — ruwe
+  meetcellen), plus twee nieuwe (adv-only, vereisen L én H via "Handvat-
+  posities → geometrie"): **"Rapportage + Analyse XLSX"** en **"Rapportage +
+  Analyse PDF"**.
+  - **Architectuurkeuze**: de UI heeft geen server/Python (`FAR-500.html` is
+    een losstaande statische pagina, zie README "geen server, geen
+    installatie") — de C1-C4-anker/envelope-logica uit
+    `far500-force-check/src/far500_force_check/{constants,engine}.py` is
+    daarom naar vanilla JS **gepoort** (nieuwe sectie "bedienkracht-analyse
+    (C1-C4)" in `FAR-500.html`, functies `segmentMoves`/`findAnchor`/
+    `buildEnvelope`/`runForceCheck`). Dit is nu **twee implementaties van
+    dezelfde criteria** (Python voor CLI/CI, JS voor de UI) — hou ze in sync
+    als de norm-interpretatie wijzigt; de JS-poort verwijst in commentaar
+    terug naar de Python-bron.
+  - **Rapport-weergave**: i.p.v. een "echte" (interactieve) Excel-grafiek
+    hand-rollen in de al-bestaande zip/OOXML-writer, wordt het hele
+    setup_analyse-rapport (titel/setup/criteria/PASS-FAIL-tabel/eindoordeel
+    + envelope-grafiek + hoogte-grafiek) op **één canvas getekend en als
+    JPEG gerasterd** — diezelfde afbeelding wordt zowel in de Excel-tab
+    `setup_analyse` ingesloten (nieuwe OOXML-drawing/media-plumbing,
+    `buildReportXlsxBlob()`) als in een **zelfgeschreven PDF** (één pagina,
+    DCTDecode-JPEG-XObject, geen library, `buildAnalysisPdfBlob()`) — zo
+    tonen Excel en PDF gegarandeerd hetzelfde. De `data`-tab blijft wel
+    gewone/filterbare cellen (met extra kolommen region/limit_N/in_grace/
+    force_ok t.o.v. de gewone meetgegevens-export).
+  - **Getest**: volledige pijplijn (engine + canvas-render + XLSX-zip +
+    PDF-bytes) gevalideerd via een headless jsdom-run met een gestubde
+    Canvas 2D-context (dit environment heeft geen browsertooling, zelfde
+    aanpak als bij eerdere UI-fixes) — synthetische meting door `onData()`
+    gevoerd, geen exceptions. De output-bestanden zijn daarna geopend met
+    **openpyxl** (bevestigt: afbeelding aanwezig op `setup_analyse` als
+    `OneCellAnchor`) en **pypdf** (bevestigt: 1 pagina, A4-landscape
+    mediabox, ingesloten JPEG correct leesbaar) — dus niet alleen "geen JS-
+    fouten" maar ook "de output-bestanden zijn structureel geldig volgens
+    onafhankelijke Excel/PDF-lezers". **Niet visueel in een browser
+    gecontroleerd** (canvas-tekencode zelf, exacte layout/opmaak) — graag
+    zelf even een echte meting met geometrie draaien en beide knoppen
+    proberen.
+- **2026-08-11** (vervolg): op verzoek een **"Oude meting laden (GitHub)"**-kaart
+  toegevoegd (adv-only) zodat eerder via "Naar GitHub" geüploade metingen
+  (release-tag `recordings`) alsnog door de nieuwe bedienkracht-analyse
+  gehaald kunnen worden — dropdown met de assets, "Laden"-knop zet
+  samples/geometrie/naam/notities terug alsof het een live meting is,
+  waarna de bestaande "Rapportage + Analyse XLSX/PDF"-knoppen gewoon werken.
+  - **CORS-blokkade ontdekt (met curl, niet gegokt)**: de asset-lijst ophalen
+    kan wél rechtstreeks vanuit de browser (`api.github.com` stuurt
+    `Access-Control-Allow-Origin: *` op publieke GET's), maar de **inhoud**
+    van een asset downloaden niet — de download-redirect eindigt op
+    `release-assets.githubusercontent.com` (Azure Blob) zonder CORS-header.
+    Daarom is `far500-upload-worker/src/index.js` uitgebreid met
+    `GET /download?name=<asset>` (bewust zonder `X-Upload-Secret`, want het
+    proxyt alleen al-publieke assets uit deze ene release — geen vrije
+    URL-doorgifte).
+  - **JS XLSX-lezer toegevoegd** aan `FAR-500.html` (`unzipStoredFile`/
+    `parseSheetRows`/`parseFarMetingWorkbook`) — leest uitsluitend bestanden
+    die de eigen `xlsxWorkbook()` heeft geschreven (ongecomprimeerd/"STORE",
+    dus geen DEFLATE-decompressie nodig); een in Excel bewerkt/opnieuw
+    opgeslagen bestand wordt herkend en geweigerd i.p.v. als brij verwerkt.
+    Alleen `t_s`/`angle_deg`/`force_N` worden uit de datarijen overgenomen —
+    arc/speed/accel/hoogte worden na het laden gewoon opnieuw door
+    `analyze()` berekend met de (uit de meta teruggezette) L/H-geometrie,
+    i.p.v. de destijds-opgeslagen afgeleide kolommen te vertrouwen.
+  - **Getest**: het volledige rondje (synthetische meting → `buildMetingXlsx()`
+    → via de "Laden"-knop met een gemockte `fetch()` weer terug parsen →
+    `haveHL()`/samples-aantal/naam/notities/geometrie correct hersteld →
+    `buildAnalyseReportCanvas()` bouwt zonder exceptie) gevalideerd via
+    dezelfde headless-jsdom-aanpak als eerder vandaag.
+  - **Gedeployed en live getest** — zie Deploy-log hieronder.
 - **2026-08-06**: hoek-teken omgedraaid + justeer-toggle + vaste grafiek-assen + kracht-teken-constante.
   - **Firmware**: justeerpunt stap2 gaat van +45° naar **-45°** (`calTargetAngle`,
     `FAR-500_ESP32C6.ino`) — via `gainV = calTargetAngle/rawAngle` wisselen daardoor
@@ -89,6 +159,15 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
   openstaand actiepunt vóór productiegebruik. Nog niet getest: de CI-workflow zelf
   (LibreOffice-PDF-render) is alleen tegen de lokale mechanica gevalideerd, niet
   live op GitHub Actions gedraaid.
+- **2026-08-11**: bevestigd dat `.github/workflows/force-check.yml` ook **live op
+  GitHub Actions succesvol draait** (run `31097502011` op commit `679ab4a`,
+  master, 2026-08-06) — het bovenstaande "nog niet getest"-punt was dus
+  achterhaald. Het gepubliceerde build-artefact (`far500-force-check-rapport`)
+  bevat zowel `far500-force-check-rapport.xlsx` als
+  `far500-force-check-setup_analyse.pdf`; de volledige keten (toetsing →
+  Excel-rapport-met-grafiek → PDF-render) werkt dus end-to-end in CI. Nog steeds
+  open: 1x valideren tegen een echte FAR-500.html-device-export (nu nog alleen
+  synthetische fixtures) vóór productiegebruik.
 - "Naar GitHub"-upload (Cloudflare Worker relay) toegevoegd aan de UI, gedeployed en end-to-end getest (2026-07-30) — werkt met een classic PAT (zie Architectuur-sectie voor het waarom). Bestandsnamen (export + upload) beginnen nu met een `yyyymmdd_hhmmss`-tijdstempel.
 - Repo verplaatst van persoonlijk account (studiotijn) naar org `DynteqBV` (2026-07-30).
 - Later (nog niet actueel): GitHub-org hernoemen van `DynteqBV` naar `dynteq` zodra die naam vrijkomt (nu nog in gebruik door een collega).
@@ -135,3 +214,11 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
   - **Secrets**: `UPLOAD_SECRET` (gedeeld wachtwoord voor de UI, willekeurig gegenereerd) en `GH_TOKEN` gezet via `wrangler secret put <NAAM>` (waarde non-interactief doorgepiped, i.p.v. de interactieve prompt — die werkt niet vanuit een niet-interactieve shell).
   - **GH_TOKEN moet een classic PAT zijn** (scope `public_repo`) — zie de opmerking bij Architectuur hierboven voor waarom een fine-grained PAT hier niet werkt.
   - Na de fixes (compatibility_date, `Authorization: token` i.p.v. `Bearer`, classic PAT) end-to-end getest met een curl-upload: asset kwam succesvol aan op `github.com/DynteqBV/far-500/releases/tag/recordings`.
+- **2026-08-11**: `GET /download?name=` toegevoegd (zie Huidige status) voor de
+  "Oude meting laden"-knop in de UI. Gedeployed via `npx wrangler deploy`
+  (wrangler was al ingelogd als `Tijn@dynteq.nl`), versie-ID
+  `b83829be-83c8-40d7-a409-facd2c00892a`. Live getest met curl tegen een
+  bestaande asset (`20260807_150340_far500.xlsx`): 200 OK, correcte
+  `Access-Control-Allow-Origin`/`Content-Disposition`, content-length klopt
+  (35141 bytes) en het resultaat is een geldig zip/XLSX-bestand (`python -m
+  zipfile` leest de verwachte onderdelen: `xl/worksheets/sheet1.xml` etc.).

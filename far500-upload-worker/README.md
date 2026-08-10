@@ -5,6 +5,15 @@ neemt het geüploade .xlsx-bestand aan en zet het door naar een Release-asset
 (tag `recordings`) op `DynteqBV/far-500`. Bestaat omdat een directe
 browser-upload naar GitHub niet kan (zie README.md in de projectroot).
 
+Sinds 2026-08-11 ook de omgekeerde richting: `GET /download?name=<asset>`
+geeft de inhoud van een eerder geüploade asset terug (voor de "oude meting
+laden"-dropdown in de UI). Ook dat kan niet rechtstreeks vanuit de browser —
+de asset-download redirect eindigt op `release-assets.githubusercontent.com`
+(Azure Blob), en die respons stuurt geen `Access-Control-Allow-Origin` mee
+(bevestigd met `curl -D-`), dus blokkeert de browser het lezen ervan net als
+bij uploads. Dit endpoint vereist bewust geen `X-Upload-Secret` — het geeft
+alleen assets terug die al publiek in deze ene release staan.
+
 ## Deployen
 
 Vereist een Cloudflare-account en [wrangler](https://developers.cloudflare.com/workers/wrangler/).
@@ -42,3 +51,8 @@ curl -X POST https://far500-upload-worker.<jouw-subdomain>.workers.dev \
 ```
 Verwacht een JSON-antwoord `{"ok":true,"url":"..."}` en een nieuwe asset onder
 [Releases](https://github.com/DynteqBV/far-500/releases/tag/recordings).
+
+Download-proxy testen:
+```
+curl -o test.xlsx "https://far500-upload-worker.<jouw-subdomain>.workers.dev/download?name=<bestandsnaam>.xlsx"
+```

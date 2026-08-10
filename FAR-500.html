@@ -132,7 +132,9 @@
       <button id="btnStop" disabled>Stop</button>
       <button id="btnStart" class="primary" disabled>Start meting</button>
       <button id="btnClear" class="danger adv-only" disabled>Wis device</button>
-      <button id="btnXlsx" class="primary wide" disabled>Download XLSX</button>
+      <button id="btnXlsx" class="primary wide" disabled>Meetgegevens XLSX</button>
+      <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
+      <button id="btnReportPdf" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse PDF</button>
       <div class="field wide adv-only" id="ghSecretField">
         <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code">
       </div>
@@ -148,6 +150,18 @@
       <h3>Meting</h3>
       <div class="field"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Dubbeldek-rek / type_A"></div>
       <div class="field"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. laag, 200 N"></div>
+    </div>
+
+    <div class="card adv-only">
+      <h3>Oude meting laden (GitHub)</h3>
+      <div class="field wide">
+        <select id="oldMeasSelect" style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
+          <option value="">— lijst wordt opgehaald… —</option>
+        </select>
+        <button id="btnOldMeasRefresh" title="Vernieuw lijst">↻</button>
+      </div>
+      <button id="btnOldMeasLoad" class="wide" disabled>Laden in het analyse-scherm</button>
+      <div class="hint" id="oldMeasStatus"></div>
     </div>
 
     <div class="card adv-only">
@@ -274,7 +288,7 @@ function setConnected(on,name){
 function onDisconnect(){ setConnected(false); running=false; updateRun(); $("btnConnect").disabled=false; keepAwakeStop(); }
 async function send(cmd){ if(ctrlChar) await ctrlChar.writeValue(new TextEncoder().encode(cmd)); }
 $("btnTare").onclick =()=>send("TARE");
-$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); send("START"); running=true; updateRun(); redraw(); keepAwakeStart(); };
+$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); loadedMeasMeta=null; send("START"); running=true; updateRun(); redraw(); keepAwakeStart(); };
 $("btnStop").onclick =()=>{ send("STOP"); running=false; updateRun(); keepAwakeStop(); };
 
 /* ---------------- scherm actief houden tijdens een meting ---------------- */
@@ -490,8 +504,139 @@ function buildHistoryXlsx(){
 $("btnHistXlsx").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); download(f.name,f.blob,"histDlFallback"); };
 $("btnHistXlsxGh").onclick=()=>{ if(!measHistory.length) return; const f=buildHistoryXlsx(); uploadToGitHub(f.blob,f.name,"histGhStatus","btnHistXlsxGh"); };
 
+/* ---------------- oude meting laden (GitHub-recordings) ---------------- */
+// Lijst ophalen kan rechtstreeks vanuit de browser (api.github.com stuurt
+// Access-Control-Allow-Origin: * op publieke GET's, bevestigd met curl). De
+// bestandsinhoud zelf NIET: de asset-download redirect eindigt op
+// release-assets.githubusercontent.com (Azure Blob) zonder CORS-header --
+// vandaar de "/download"-proxy op dezelfde Worker die de uploads al deed.
+const GH_LIST_URL="https://api.github.com/repos/DynteqBV/far-500/releases/tags/recordings";
+let loadedMeasMeta=null;   // {datumStr} als de huidige samples uit een geladen oud bestand komen (i.p.v. een live meting)
+
+async function refreshOldMeasurementList(){
+  const sel=$("oldMeasSelect"), status=$("oldMeasStatus");
+  sel.innerHTML='<option value="">— lijst wordt opgehaald… —</option>'; sel.disabled=true; $("btnOldMeasLoad").disabled=true;
+  status.textContent="";
+  try{
+    const res=await fetch(GH_LIST_URL);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const data=await res.json();
+    const assets=(data.assets||[]).slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    sel.innerHTML='<option value="">— kies een meting ('+assets.length+') —</option>'+
+      assets.map(a=>'<option value="'+a.name.replace(/"/g,"&quot;")+'">'+a.name+' ('+(a.size/1024).toFixed(0)+' KB)</option>').join("");
+    if(!assets.length) status.textContent="Nog geen metingen gevonden onder de recordings-release.";
+  }catch(e){ sel.innerHTML='<option value="">— ophalen mislukt —</option>'; status.textContent="Lijst ophalen mislukt: "+e.message; }
+  finally{ sel.disabled=false; }
+}
+$("btnOldMeasRefresh").onclick=refreshOldMeasurementList;
+$("oldMeasSelect").onchange=()=>{ $("btnOldMeasLoad").disabled=!$("oldMeasSelect").value; };
+refreshOldMeasurementList();
+
+// Minimale ZIP-lezer: leest uitsluitend bestanden die xlsxWorkbook() hierboven
+// zelf geschreven heeft (ongecomprimeerd, "STORE"-methode) -- geen DEFLATE
+// nodig. Een in Excel bewerkt/opnieuw opgeslagen bestand gebruikt wél
+// compressie en wordt bewust geweigerd i.p.v. als brij bytes verwerkt.
+function unzipStoredFile(bytes,wantedName){
+  const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  const dec=new TextDecoder(); let p=0;
+  while(p+30<=bytes.length && dv.getUint32(p,true)===0x04034b50){
+    const method=dv.getUint16(p+8,true);
+    const compSize=dv.getUint32(p+18,true), uncompSize=dv.getUint32(p+22,true);
+    const nameLen=dv.getUint16(p+26,true), extraLen=dv.getUint16(p+28,true);
+    const nameStart=p+30;
+    const name=dec.decode(bytes.subarray(nameStart,nameStart+nameLen));
+    const dataStart=nameStart+nameLen+extraLen;
+    if(name===wantedName){
+      if(method!==0) throw new Error("Dit bestand gebruikt compressie (waarschijnlijk bewerkt in Excel) — kan alleen door FAR-500 zelf geëxporteerde bestanden lezen.");
+      return bytes.subarray(dataStart,dataStart+uncompSize);
+    }
+    p=dataStart+compSize;
+  }
+  throw new Error("Onderdeel '"+wantedName+"' niet gevonden — is dit een geldige FAR-500-export?");
+}
+function parseSheetRows(xmlText){
+  const doc=new DOMParser().parseFromString(xmlText,"application/xml");
+  if(doc.querySelector("parsererror")) throw new Error("Meting-bestand kon niet als XML gelezen worden.");
+  const rows=[];
+  doc.querySelectorAll("row").forEach(rowEl=>{
+    const ri=parseInt(rowEl.getAttribute("r"),10)-1;
+    const row=[];
+    rowEl.querySelectorAll("c").forEach(cEl=>{
+      const ref=cEl.getAttribute("r")||"A1";
+      const colLetters=ref.match(/^[A-Z]+/)[0];
+      let col=0; for(let i=0;i<colLetters.length;i++) col=col*26+(colLetters.charCodeAt(i)-64);
+      col-=1;
+      let val;
+      if(cEl.getAttribute("t")==="inlineStr"){ const tEl=cEl.querySelector("t"); val=tEl?tEl.textContent:""; }
+      else { const vEl=cEl.querySelector("v"); val=vEl?parseFloat(vEl.textContent):""; }
+      row[col]=val;
+    });
+    rows[ri]=row;
+  });
+  return rows;   // sparse array; index = rijnummer-1
+}
+// Leest exact wat buildMetingXlsx() schrijft: metaRows(), lege regel, DATA_HEADER, datarijen.
+// We nemen alleen t_s/angle_deg/force_N over uit de datarijen -- arc/speed/
+// accel/height worden hierna gewoon opnieuw door analyze() berekend met de
+// (uit meta teruggezette) geometrie, i.p.v. de destijds-opgeslagen afgeleide
+// kolommen te vertrouwen.
+function parseFarMetingWorkbook(bytes){
+  const sheetBytes=unzipStoredFile(bytes,"xl/worksheets/sheet1.xml");
+  const rows=parseSheetRows(new TextDecoder().decode(sheetBytes));
+  let headerIdx=-1;
+  rows.forEach((row,i)=>{ if(row&&row[0]==="t_s") headerIdx=i; });
+  if(headerIdx<0) throw new Error("Geen datatabel (t_s-header) gevonden in dit bestand.");
+  const meta={};
+  for(let i=0;i<headerIdx;i++){ const row=rows[i]; if(row&&row[0]) meta[row[0]]=row; }
+  const dataSamples=[];
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const row=rows[i]; if(!row) continue;
+    const t_s=row[0]; if(typeof t_s!=="number"||isNaN(t_s)) continue;
+    const deg=row[1], N=row[2];
+    dataSamples.push({t:Math.round(t_s*1000), deg:(typeof deg==="number"&&!isNaN(deg))?deg:NaN, N:(typeof N==="number"&&!isNaN(N))?N:""});
+  }
+  return {meta, samples:dataSamples};
+}
+function metaNum(meta,label,col){ const row=meta[label]; const v=row?row[col]:undefined; return (typeof v==="number"&&!isNaN(v))?v:null; }
+function metaStr(meta,label,col){ const row=meta[label]; const v=row?row[col]:undefined; return (v==null)?"":String(v); }
+
+$("btnOldMeasLoad").onclick=async()=>{
+  const name=$("oldMeasSelect").value; if(!name) return;
+  const status=$("oldMeasStatus"), btn=$("btnOldMeasLoad");
+  btn.disabled=true; status.textContent="bezig met laden…";
+  try{
+    const res=await fetch(GH_RELAY_URL+"/download?name="+encodeURIComponent(name));
+    if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||("HTTP "+res.status)); }
+    const bytes=new Uint8Array(await res.arrayBuffer());
+    const {meta, samples:loaded}=parseFarMetingWorkbook(bytes);
+    if(!loaded.length) throw new Error("Geen meetrijen gevonden in dit bestand.");
+
+    if(running){ send("STOP"); running=false; updateRun(); keepAwakeStop(); }
+    samples=loaded;
+    $("naam").value=metaStr(meta,"Naam (Merk/Type)",1);
+    $("notities").value=metaStr(meta,"Notities (Positie/Belasting)",1);
+    loadedMeasMeta={datumStr: metaStr(meta,"Datum/tijd meting",1)};
+
+    geo.yHigh=metaNum(meta,"Handvat hoog (cm)",1); geo.angHigh=metaNum(meta,"Handvat hoog (cm)",3);
+    geo.yLow=metaNum(meta,"Handvat laag (cm)",1); geo.angLow=metaNum(meta,"Handvat laag (cm)",3);
+    geo.Lman=metaNum(meta,"L ingevoerd (cm)",1); geo.L=metaNum(meta,"L berekend (cm)",1);
+    geo.Hman=metaNum(meta,"H ingevoerd (cm)",1); geo.H=metaNum(meta,"H berekend (cm)",1);
+    geo.valid=geo.L!=null&&geo.H!=null;
+    $("yHigh").value=geo.yHigh!=null?geo.yHigh:""; $("angHigh").textContent=geo.angHigh!=null?geo.angHigh.toFixed(1)+"°":"—";
+    $("yLow").value=geo.yLow!=null?geo.yLow:""; $("angLow").textContent=geo.angLow!=null?geo.angLow.toFixed(1)+"°":"—";
+    $("Hman").value=geo.Hman!=null?geo.Hman:""; $("Lman").value=geo.Lman!=null?geo.Lman:"";
+    $("valL").textContent=geo.L!=null?geo.L.toFixed(1)+" cm":"—"; $("valH").textContent=geo.H!=null?geo.H.toFixed(1)+" cm":"—";
+
+    $("nSamples").textContent=samples.length; $("lastT").textContent=(samples[samples.length-1].t/1000).toFixed(2);
+    $("btnCsv").disabled=false; $("btnXlsx").disabled=false; $("btnXlsxGh").disabled=false;
+    analyze(); redraw();
+    status.textContent="geladen: "+name+" ("+samples.length+" samples)"+(haveHL()?" — klaar voor Rapportage + Analyse.":" — vul evt. L/H aan voor de bedienkracht-analyse.");
+  }catch(e){ status.textContent="laden mislukt: "+e.message; }
+  finally{ btn.disabled=!$("oldMeasSelect").value; }
+};
+
 /* ---------------- analyse ---------------- */
-function resetAnalysis(){ A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false}; setBanner(); }
+function resetAnalysis(){ A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false}; setBanner(); updateReportButtons(); }
 function derivAt(i,arr,ts){ let j=i-1; while(j>0&&ts[i]-ts[j]<WIN)j--; if(j<0||ts[i]===ts[j])return 0; return (arr[i]-arr[j])/(ts[i]-ts[j]); }
 
 function analyze(){
@@ -526,6 +671,11 @@ function analyze(){
     $("valPeak").textContent=A.maxV.toFixed(1)+" / "+A.maxA.toFixed(1);
   } else { $("valArc").textContent="—"; $("valSpd").textContent="—"; $("valHt").textContent="—"; $("valPeak").textContent="—"; }
   setBanner();
+  updateReportButtons();
+}
+function updateReportButtons(){
+  const ok=haveHL()&&samples.length>=3;
+  $("btnReportXlsx").disabled=!ok; $("btnReportPdf").disabled=!ok;
 }
 function setBanner(){
   const el=$("resultBanner"); el.className="banner";
@@ -538,6 +688,277 @@ function setBanner(){
   else if(limitsOn()){ el.classList.add("ok"); el.textContent="BINNEN LIMIETEN ✓  (piek "+A.maxV.toFixed(1)+" cm/s, "+A.maxA.toFixed(1)+" cm/s²)"; }
   else { el.classList.add("ok"); el.textContent="METING OK  (piek "+A.maxV.toFixed(1)+" cm/s, "+A.maxA.toFixed(1)+" cm/s²) — limietcontrole uit"; }
 }
+
+/* ---------------- bedienkracht-analyse (C1-C4) ---------------- */
+// Poort van far500-force-check/src/far500_force_check/{constants,engine}.py naar
+// vanilla JS -- de UI heeft geen server/Python, dus de "Rapportage + Analyse"-
+// knoppen moeten dezelfde anker/envelope-berekening client-side kunnen draaien
+// als het losse far500-force-check-CLI/CI-rapport. Hou deze poort in sync als
+// de Python-versie wijzigt; zie far500-force-check/README.md voor de
+// normatieve tekst en de A1-A5-interpretatiekeuzes.
+const CRIT={H_THRESH:135,H_MAX:170,F_LOW:140,F_HIGH:85,GRACE_FACT:1.5,GRACE_ARC:20,
+  DETECT_ARC:10,REV_HYST:2.0,USE_ABS_FORCE:true,GRACE_ABOVE:true,HEIGHT_MAX_IS_FAIL:true};
+const DEFAULT_VMAX=20, DEFAULT_AMAX=40;
+function maxOf(arr){ let m=-Infinity; for(let i=0;i<arr.length;i++) if(arr[i]>m) m=arr[i]; return m===-Infinity?0:m; }
+
+function segmentMoves(arc,revHyst){
+  const n=arc.length; if(n===0) return [];
+  const pivots=[0]; let direction=null, runMax=0, runMin=0, ext=0;
+  for(let i=1;i<n;i++){
+    if(direction===null){
+      if(arc[i]>arc[runMax]) runMax=i;
+      if(arc[i]<arc[runMin]) runMin=i;
+      if(arc[runMax]-arc[pivots[pivots.length-1]]>=revHyst){ direction="up"; ext=runMax; }
+      else if(arc[pivots[pivots.length-1]]-arc[runMin]>=revHyst){ direction="down"; ext=runMin; }
+      continue;
+    }
+    if(direction==="up"){
+      if(arc[i]>arc[ext]) ext=i;
+      else if(arc[ext]-arc[i]>=revHyst){ pivots.push(ext); direction="down"; ext=i; }
+    } else {
+      if(arc[i]<arc[ext]) ext=i;
+      else if(arc[i]-arc[ext]>=revHyst){ pivots.push(ext); direction="up"; ext=i; }
+    }
+  }
+  pivots.push(n-1);
+  const moves=[];
+  for(let k=0;k<pivots.length-1;k++){
+    const a=pivots[k], b=pivots[k+1]; if(b<=a) continue;
+    moves.push({direction: arc[b]>=arc[a]?"up":"down", start:a, end:b});
+  }
+  return moves;
+}
+function forceAbs(series,i){ return CRIT.USE_ABS_FORCE?Math.abs(series.force_N[i]):series.force_N[i]; }
+function findAnchor(series,move){
+  const {start,end}=move, arc=series.arc_cm;
+  const arcStart=arc[start], heightStart=series.handle_height_cm[start];
+  const base=heightStart<CRIT.H_THRESH?CRIT.F_LOW:CRIT.F_HIGH;
+  let triggerIdx=null;
+  for(let i=start;i<=end;i++){
+    if(Math.abs(arc[i]-arcStart)>CRIT.DETECT_ARC) break;
+    if(forceAbs(series,i)>base){ triggerIdx=i; break; }
+  }
+  if(triggerIdx===null) return {idx:start, arc:arcStart, reason:"start"};
+  for(let i=start;i<=triggerIdx;i++) if(forceAbs(series,i)>=base) return {idx:i, arc:arc[i], reason:"breakaway_detected"};
+  return {idx:triggerIdx, arc:arc[triggerIdx], reason:"breakaway_detected"};
+}
+function buildEnvelope(series,moves){
+  const results=new Array(series.t_s.length);
+  moves.forEach((move,moveIndex)=>{
+    const sign=move.direction==="up"?1:-1;
+    for(let i=move.start;i<=move.end;i++){
+      const height=series.handle_height_cm[i];
+      const region=height<CRIT.H_THRESH?"laag":"hoog";
+      const base=region==="laag"?CRIT.F_LOW:CRIT.F_HIGH;
+      const arcI=series.arc_cm[i];
+      const progressed=(arcI-move.anchorArc)*sign>=0;
+      const dist=Math.abs(arcI-move.anchorArc);
+      const inGrace=progressed && dist<=CRIT.GRACE_ARC && (CRIT.GRACE_ABOVE||base===CRIT.F_LOW);
+      const envelope=inGrace?CRIT.GRACE_FACT*base:base;
+      const fAbs=forceAbs(series,i);
+      results[i]={region,base_N:base,envelope_N:envelope,in_grace:inGrace,force_abs_N:fAbs,force_ok:fAbs<=envelope,move_index:moveIndex};
+    }
+  });
+  return results;
+}
+function runForceCheck(series, vmaxLimit, amaxLimit){
+  const n=series.t_s.length;
+  const moveTuples=segmentMoves(series.arc_cm, CRIT.REV_HYST);
+  const moves=moveTuples.map(m=>{
+    const a=findAnchor(series,m);
+    return {direction:m.direction, start:m.start, end:m.end, arcStart:series.arc_cm[m.start],
+      anchorIdx:a.idx, anchorArc:a.arc, anchorReason:a.reason};
+  });
+  const results=buildEnvelope(series,moves);
+  const violationIdx=[]; const lowForces=[], highForces=[];
+  for(let i=0;i<n;i++){ const r=results[i]; if(!r) continue;
+    if(!r.force_ok) violationIdx.push(i);
+    if(r.region==="laag") lowForces.push(r.force_abs_N); else highForces.push(r.force_abs_N); }
+  let c1_ok=true, c2_ok=true;
+  for(let i=0;i<n;i++){ const r=results[i]; if(!r) continue;
+    if(r.region==="laag" && !r.force_ok) c1_ok=false;
+    if(r.region==="hoog" && !r.force_ok) c2_ok=false; }
+  const maxHeight=maxOf(series.handle_height_cm);
+  const c3_ok=!CRIT.HEIGHT_MAX_IS_FAIL || maxHeight<=CRIT.H_MAX;
+  const vmax=vmaxLimit||DEFAULT_VMAX, amax=amaxLimit||DEFAULT_AMAX;
+  const maxSpeed=maxOf(series.speed_cm_s.map(Math.abs)), maxAccel=maxOf(series.accel_cm_s2.map(Math.abs));
+  const c4_ok=maxSpeed<=vmax && maxAccel<=amax;
+  return {moves, results, c1_ok, c2_ok, c3_ok, c4_ok,
+    peak_force_low_N: lowForces.length?maxOf(lowForces):0, peak_force_high_N: highForces.length?maxOf(highForces):0,
+    max_height_cm:maxHeight, max_speed_cm_s:maxSpeed, max_accel_cm_s2:maxAccel,
+    violation_indices:violationIdx, overall_pass:c1_ok&&c2_ok&&c3_ok&&c4_ok};
+}
+function buildSeries(){
+  return {
+    t_s: samples.map(s=>s.t/1000),
+    angle_deg: samples.map(s=>s.deg),
+    force_N: samples.map(s=>(s.N===""||isNaN(s.N))?0:s.N),
+    arc_cm: A.arc.slice(0,samples.length),
+    speed_cm_s: A.spd.slice(0,samples.length),
+    accel_cm_s2: A.acc.slice(0,samples.length),
+    handle_height_cm: A.ht.slice(0,samples.length),
+  };
+}
+function criteriaTextLines(){
+  const c=CRIT;
+  return [
+    "C1 — onder "+c.H_THRESH.toFixed(0)+" cm handvathoogte: kracht ≤ "+c.F_LOW.toFixed(0)+" N (eerste "+c.GRACE_ARC.toFixed(0)+" cm vanaf het anker: ≤ "+(c.GRACE_FACT*c.F_LOW).toFixed(1)+" N breakaway-marge).",
+    "C2 — boven "+c.H_THRESH.toFixed(0)+" cm handvathoogte: kracht ≤ "+c.F_HIGH.toFixed(0)+" N (zelfde breakaway-marge tot "+(c.GRACE_FACT*c.F_HIGH).toFixed(1)+" N, A1 GRACE_ABOVE="+c.GRACE_ABOVE+").",
+    "C3 — handvathoogte ≤ "+c.H_MAX.toFixed(0)+" cm (A3 HEIGHT_MAX_IS_FAIL="+c.HEIGHT_MAX_IS_FAIL+").",
+    "C4 — snelheid ≤ Max snelheid, versnelling ≤ Max versnelling (uit de metadata, anders default "+DEFAULT_VMAX+"/"+DEFAULT_AMAX+").",
+    "Anker: overschrijdt |F| de basislimiet binnen de eerste "+c.DETECT_ARC.toFixed(0)+" cm van een beweging, dan ligt het anker op dat kruisingspunt; anders op het bewegingsbegin. Het "+c.GRACE_ARC.toFixed(0)+" cm-breakaway-venster geldt in beide gevallen vanaf dat anker.",
+    "Kracht getoetst als |force_N| (A2, USE_ABS_FORCE="+c.USE_ABS_FORCE+"). Richtingsdetectie met REV_HYST="+c.REV_HYST.toFixed(1)+" cm hysterese.",
+  ];
+}
+function outcomeRows(res){
+  const c=CRIT;
+  return [
+    ["C1", res.c1_ok, "hoogste kracht onder "+c.H_THRESH.toFixed(0)+" cm = "+res.peak_force_low_N.toFixed(1)+" N ≤ "+c.F_LOW.toFixed(0)+"/"+(c.GRACE_FACT*c.F_LOW).toFixed(1)+" N"],
+    ["C2", res.c2_ok, "hoogste kracht boven "+c.H_THRESH.toFixed(0)+" cm = "+res.peak_force_high_N.toFixed(1)+" N ≤ "+c.F_HIGH.toFixed(0)+"/"+(c.GRACE_FACT*c.F_HIGH).toFixed(1)+" N"],
+    ["C3", res.c3_ok, "max hoogte = "+res.max_height_cm.toFixed(1)+" cm (limiet "+c.H_MAX.toFixed(0)+" cm)"],
+    ["C4", res.c4_ok, "piek snelheid = "+res.max_speed_cm_s.toFixed(1)+" cm/s, piek versnelling = "+res.max_accel_cm_s2.toFixed(1)+" cm/s2"],
+  ];
+}
+function wrapText(ctx,text,maxWidth){
+  const words=text.split(" "); const lines=[]; let cur="";
+  words.forEach(w=>{ const test=cur?cur+" "+w:w;
+    if(ctx.measureText(test).width>maxWidth && cur){ lines.push(cur); cur=w; } else cur=test; });
+  if(cur) lines.push(cur);
+  return lines;
+}
+function drawEnvelopeChart(ctx,x,y,w,h,series,res){
+  const n=series.t_s.length;
+  let peakForce=0, peakEnv=0;
+  for(let i=0;i<n;i++){ const r=res.results[i]; if(!r) continue;
+    if(r.force_abs_N>peakForce) peakForce=r.force_abs_N; if(r.envelope_N>peakEnv) peakEnv=r.envelope_N; }
+  const yMax=Math.max(1.1*peakForce,1.1*peakEnv,1);
+  const tMax=Math.max(series.t_s[n-1],0.001);
+  const X=t=>x+t/tMax*w, Y=v=>y+h-(Math.min(v,yMax)/yMax*h);
+  const env=i=>res.results[i]?res.results[i].envelope_N:0;
+  ctx.fillStyle="#9BE38A"; ctx.beginPath(); ctx.moveTo(X(series.t_s[0]),Y(0));
+  for(let i=0;i<n;i++) ctx.lineTo(X(series.t_s[i]),Y(env(i)));
+  ctx.lineTo(X(series.t_s[n-1]),Y(0)); ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#F0A3A3"; ctx.beginPath(); ctx.moveTo(X(series.t_s[0]),Y(yMax));
+  for(let i=0;i<n;i++) ctx.lineTo(X(series.t_s[i]),Y(env(i)));
+  ctx.lineTo(X(series.t_s[n-1]),Y(yMax)); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#1A1A1A"; ctx.lineWidth=2; ctx.beginPath();
+  for(let i=0;i<n;i++){ const px=X(series.t_s[i]), py=Y(res.results[i]?res.results[i].force_abs_N:0); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+  ctx.stroke();
+  ctx.fillStyle="#CC0000";
+  res.violation_indices.forEach(i=>{ ctx.beginPath(); ctx.arc(X(series.t_s[i]),Y(res.results[i].force_abs_N),4,0,7); ctx.fill(); });
+  ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle="#333"; ctx.font="13px sans-serif";
+  ctx.fillText("0 s",x,y+h+16); ctx.fillText(tMax.toFixed(1)+" s",x+w-34,y+h+16);
+  ctx.fillText(yMax.toFixed(0)+" N",x,y+4);
+}
+function drawHeightChart(ctx,x,y,w,h,series){
+  const n=series.t_s.length;
+  const hts=series.handle_height_cm;
+  const hMaxScale=Math.max(1.1*CRIT.H_MAX, maxOf(hts))+10;
+  const tMax=Math.max(series.t_s[n-1],0.001);
+  const X=t=>x+t/tMax*w, Y=v=>y+h-(v/hMaxScale*h);
+  ctx.strokeStyle="#4A90D9"; ctx.lineWidth=2; ctx.beginPath();
+  for(let i=0;i<n;i++){ const px=X(series.t_s[i]), py=Y(hts[i]); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+  ctx.stroke();
+  [["H_THRESH",CRIT.H_THRESH],["H_MAX",CRIT.H_MAX]].forEach(([lbl,v])=>{
+    ctx.strokeStyle="#999"; ctx.setLineDash([5,4]); ctx.lineWidth=1; ctx.beginPath();
+    ctx.moveTo(x,Y(v)); ctx.lineTo(x+w,Y(v)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#666"; ctx.font="12px sans-serif"; ctx.fillText(lbl+" ("+v+"cm)",x+4,Y(v)-4);
+  });
+  ctx.strokeStyle="#666"; ctx.strokeRect(x,y,w,h);
+}
+// Bouwt EEN groot rapport-canvas (titel/setup/criteria/PASS-FAIL-tabel/
+// eindoordeel + beide grafieken). Wordt zowel als afbeelding in de
+// setup_analyse-Excel-tab als (identiek) in de PDF gebruikt, zodat Excel en
+// PDF gegarandeerd hetzelfde tonen -- een losse "echte" Excel-grafiek zou dat
+// niet garanderen en zou de hand-geschreven XLSX-writer flink complexer maken.
+function buildAnalyseReportCanvas(){
+  if(!haveHL()) throw new Error("Vul eerst L en H in (kaart 'Handvat-posities → geometrie') voor de bedienkracht-analyse.");
+  if(samples.length<3) throw new Error("Nog geen (voldoende) meetdata voor een analyse.");
+  const series=buildSeries();
+  const vmaxLimit=limitsOn()?(parseFloat($("vmax").value)||null):null;
+  const amaxLimit=limitsOn()?(parseFloat($("amax").value)||null):null;
+  const res=runForceCheck(series,vmaxLimit,amaxLimit);
+
+  const W=1700, PAD=40, lineH=20;
+  const meas=document.createElement("canvas").getContext("2d");
+  meas.font="12.5px sans-serif";
+  const critLines=[]; criteriaTextLines().forEach(line=>wrapText(meas,line,W-2*PAD-8).forEach(l=>critLines.push(l)));
+
+  const H = PAD + 30 + 30 + 26 + 26 + 20
+    + 24 + 7*lineH + 16
+    + 24 + critLines.length*lineH + 16
+    + 24 + 24 + 4*lineH + 16
+    + 50 + 20
+    + 24 + 300 + 30
+    + 24 + 260 + PAD;
+
+  const canvas=document.createElement("canvas");
+  canvas.width=W; canvas.height=Math.round(H);
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#111";
+  let y=PAD;
+  ctx.font="bold 24px sans-serif"; ctx.fillText("FAR-500 — bedienkracht-analyse", PAD, y+=24);
+  ctx.font="14px sans-serif"; y+=26; ctx.fillText($("naam").value||"(naam onbekend)", PAD, y);
+  if($("notities").value){ y+=22; ctx.fillText($("notities").value, PAD, y); }
+  y+=22; ctx.fillText(loadedMeasMeta?loadedMeasMeta.datumStr:(measStart||new Date()).toLocaleString('nl-NL'), PAD, y);
+  y+=30;
+  ctx.font="bold 16px sans-serif"; ctx.fillText("Setup", PAD, y); y+=6;
+  ctx.font="13px sans-serif";
+  const naText=v=>(v==null||v===""||isNaN(v))?"—":v;
+  const setupRows=[
+    ["Meetas","3D-vector (2-punts justering 0°/45°)"],
+    ["L ingevoerd / berekend / gebruikt (cm)", naText(r2(geo.Lman))+" / "+naText(r2(geo.L))+" / "+naText(r2(Lused()))],
+    ["H ingevoerd / berekend / gebruikt (cm)", naText(r2(geo.Hman))+" / "+naText(r2(geo.H))+" / "+naText(r2(Hused()))],
+    ["Handvat hoog (cm) / hoek (deg)", naText(r2(geo.yHigh))+" / "+naText(r2(geo.angHigh))],
+    ["Handvat laag (cm) / hoek (deg)", naText(r2(geo.yLow))+" / "+naText(r2(geo.angLow))],
+    ["Max snelheid (cm/s)", limitsOn()?naText(parseFloat($("vmax").value)):"(default "+DEFAULT_VMAX+")"],
+    ["Max versnelling (cm/s2)", limitsOn()?naText(parseFloat($("amax").value)):"(default "+DEFAULT_AMAX+")"],
+  ];
+  setupRows.forEach(([lbl,val])=>{ y+=lineH; ctx.fillText(lbl+":", PAD, y); ctx.fillText(String(val), PAD+360, y); });
+  y+=16; y+=24; ctx.font="bold 16px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=6;
+  ctx.font="12.5px sans-serif";
+  critLines.forEach(l=>{ y+=lineH; ctx.fillText(l, PAD, y); });
+  y+=16; y+=24; ctx.font="bold 16px sans-serif"; ctx.fillText("Uitkomst", PAD, y); y+=6;
+  y+=24; ctx.font="bold 13px sans-serif";
+  ctx.fillText("Criterium",PAD,y); ctx.fillText("Resultaat",PAD+90,y); ctx.fillText("Onderbouwing",PAD+220,y);
+  outcomeRows(res).forEach(([label,ok,note])=>{
+    y+=lineH;
+    ctx.fillStyle=ok?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD+85,y-14,80,18);
+    ctx.fillStyle="#111"; ctx.font="13px sans-serif"; ctx.fillText(label,PAD,y);
+    ctx.font="bold 13px sans-serif"; ctx.fillText(ok?"PASS":"FAIL",PAD+90,y);
+    ctx.font="12.5px sans-serif"; ctx.fillText(note,PAD+220,y);
+  });
+  y+=16+50;
+  const passAll=res.overall_pass;
+  ctx.fillStyle=passAll?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD,y-32,560,42);
+  ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 26px sans-serif";
+  ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+10, y-4);
+  y+=20+24;
+  ctx.fillStyle="#111"; ctx.font="bold 14px sans-serif"; ctx.fillText("Bedienkracht vs. toegestane envelope", PAD, y); y+=8;
+  drawEnvelopeChart(ctx, PAD, y, W-2*PAD, 300, series, res); y+=300+30;
+  ctx.font="bold 14px sans-serif"; ctx.fillText("Handvathoogte vs. tijd", PAD, y); y+=8;
+  drawHeightChart(ctx, PAD, y, W-2*PAD, 260, series);
+  return {canvas, series, res};
+}
+async function canvasToJpegBytes(canvas,quality){
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",quality||0.9));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+function buildReportDataRows(series,res){
+  const header=["t_s","angle_deg","force_N","arc_cm","speed_cm_s","accel_cm_s2","handle_height_cm","region","limit_N","in_grace","force_ok"];
+  const rows=[header];
+  for(let i=0;i<series.t_s.length;i++){
+    const r=res.results[i]||{};
+    rows.push([r2(series.t_s[i]), series.angle_deg[i], series.force_N[i], r2(series.arc_cm[i]),
+      r2(series.speed_cm_s[i]), r2(series.accel_cm_s2[i]), r2(series.handle_height_cm[i]),
+      r.region||"", r.envelope_N!=null?r2(r.envelope_N):"", r.in_grace===true, r.force_ok===true]);
+  }
+  return rows;
+}
+function fnameSuffix(suffix,ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
+  return tsStamp()+"_"+nm+"_"+suffix+"."+ext; }
 
 /* ---------------- export ---------------- */
 const r2=x=>(x==null||isNaN(x))?"":Math.round(x*100)/100;
@@ -609,21 +1030,49 @@ function buildMetingXlsx(){
 }
 $("btnXlsx").onclick=()=>{ const f=buildMetingXlsx(); download(f.name,f.blob); };
 $("btnXlsxGh").onclick=()=>{ const f=buildMetingXlsx(); uploadToGitHub(f.blob,f.name,"ghStatus","btnXlsxGh"); };
+
+async function buildAnalyseReportAssets(){
+  const {canvas, series, res}=buildAnalyseReportCanvas();
+  const jpegBytes=await canvasToJpegBytes(canvas,0.9);
+  return {canvas, series, res, jpegBytes};
+}
+$("btnReportXlsx").onclick=async()=>{
+  const btn=$("btnReportXlsx"); btn.disabled=true;
+  try{
+    const {canvas, series, res, jpegBytes}=await buildAnalyseReportAssets();
+    const dataRows=buildReportDataRows(series,res);
+    const blob=buildReportXlsxBlob(jpegBytes, canvas.width, canvas.height, dataRows);
+    download(fnameSuffix("rapport","xlsx"), blob);
+  }catch(e){ alert(e.message); }
+  finally{ updateReportButtons(); }
+};
+$("btnReportPdf").onclick=async()=>{
+  const btn=$("btnReportPdf"); btn.disabled=true;
+  try{
+    const {canvas, jpegBytes}=await buildAnalyseReportAssets();
+    const blob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
+    download(fnameSuffix("analyse","pdf"), blob);
+  }catch(e){ alert(e.message); }
+  finally{ updateReportButtons(); }
+};
 function xlsxBlob(rows,sheetName){ return xlsxWorkbook([{name:sheetName,rows}]); }
+// Gedeeld door xlsxWorkbook() en buildReportXlsxBlob() (rapportage-export).
+const escXml=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const colName=i=>{let s="";i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
+function sheetXmlRows(rows){
+  let sd="";
+  rows.forEach((row,ri)=>{ sd+='<row r="'+(ri+1)+'">';
+    row.forEach((v,ci)=>{ if(v===null||v===undefined||v==="") return; const ref=colName(ci)+(ri+1);
+      if(typeof v==="number"&&isFinite(v)) sd+='<c r="'+ref+'"><v>'+v+'</v></c>';
+      else sd+='<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+escXml(v)+'</t></is></c>'; });
+    sd+='</row>'; });
+  return sd;
+}
 // sheets: [{name, rows}, ...] -> 1 werkboek met 1 tabblad per entry, in volgorde.
 function xlsxWorkbook(sheets){
-  const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const colName=i=>{let s="";i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
-  const sheetXml=rows=>{
-    let sd="";
-    rows.forEach((row,ri)=>{ sd+='<row r="'+(ri+1)+'">';
-      row.forEach((v,ci)=>{ if(v===null||v===undefined||v==="") return; const ref=colName(ci)+(ri+1);
-        if(typeof v==="number"&&isFinite(v)) sd+='<c r="'+ref+'"><v>'+v+'</v></c>';
-        else sd+='<c r="'+ref+'" t="inlineStr"><is><t xml:space="preserve">'+esc(v)+'</t></is></c>'; });
-      sd+='</row>'; });
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sd+'</sheetData></worksheet>';
-  };
+  const esc=escXml;
+  const sheetXml=rows=>'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sheetXmlRows(rows)+'</sheetData></worksheet>';
   const safeName=n=>{ const s=String(n).replace(/[:\\\/\?\*\[\]]/g,"_").slice(0,31); return s||"Blad"; };
   const used={};
   const S=sheets.map((s,i)=>{ let nm=safeName(s.name); let base=nm,k=2;
@@ -669,6 +1118,107 @@ function zipStore(files){
   const eocd=new Uint8Array([].concat(u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(cdSize),u32(offset),u16(0)));
   const all=[...local,...central,eocd]; let len=0; all.forEach(a=>len+=a.length);
   const out=new Uint8Array(len); let o=0; all.forEach(a=>{out.set(a,o);o+=a.length;}); return out;
+}
+
+/* ---- Rapportage + Analyse XLSX (setup_analyse = rapport-afbeelding, data = echte cellen) ---- */
+// Aparte builder i.p.v. xlsxWorkbook() generiek te maken voor afbeeldingen:
+// dit is de enige plek die een OOXML-drawing/media-part nodig heeft, en dat
+// zou de eenvoudige tekst-only writer hierboven onnodig complex maken.
+function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
+  const TARGET_W_PX=980;
+  const scale=TARGET_W_PX/imgWpx;
+  const emuW=Math.round(imgWpx*scale*9525), emuH=Math.round(imgHpx*scale*9525);
+  const sheet1Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+    '<sheetData></sheetData><drawing r:id="rId1"/></worksheet>';
+  const sheet2Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sheetXmlRows(dataRows)+'</sheetData></worksheet>';
+  const drawingXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'+
+    '<xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>'+
+    '<xdr:ext cx="'+emuW+'" cy="'+emuH+'"/>'+
+    '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="1" name="rapport"/><xdr:cNvPicPr/></xdr:nvPicPr>'+
+    '<xdr:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>'+
+    '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="'+emuW+'" cy="'+emuH+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>'+
+    '<xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
+  const files=[
+    {name:"[Content_Types].xml",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+      '<Default Extension="xml" ContentType="application/xml"/>'+
+      '<Default Extension="jpeg" ContentType="image/jpeg"/>'+
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+      '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+      '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'+
+      '</Types>'},
+    {name:"_rels/.rels",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+    {name:"xl/workbook.xml",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+      '<sheets><sheet name="setup_analyse" sheetId="1" r:id="rId1"/><sheet name="data" sheetId="2" r:id="rId2"/></sheets></workbook>'},
+    {name:"xl/_rels/workbook.xml.rels",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'+
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'+
+      '</Relationships>'},
+    {name:"xl/worksheets/sheet1.xml", str:sheet1Xml},
+    {name:"xl/worksheets/sheet2.xml", str:sheet2Xml},
+    {name:"xl/worksheets/_rels/sheet1.xml.rels", str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>'},
+    {name:"xl/drawings/drawing1.xml", str:drawingXml},
+    {name:"xl/drawings/_rels/drawing1.xml.rels", str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.jpeg"/></Relationships>'},
+  ];
+  const enc=new TextEncoder();
+  const zipFiles=files.map(f=>({name:f.name,bytes:enc.encode(f.str)}));
+  zipFiles.push({name:"xl/media/image1.jpeg", bytes:jpegBytes});
+  return new Blob([zipStore(zipFiles)], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+}
+
+/* ---- Rapportage + Analyse PDF (zelfgeschreven, geen library) ---- */
+// Zelfde afweging als hierboven: 1 pagina met 1 ingesloten JPEG (het identieke
+// rapport-canvas) i.p.v. een tekst-layout-engine erbij bouwen. DCTDecode kan
+// een baseline-JPEG rechtstreeks (zonder her-encoderen) als /DeviceRGB-XObject
+// insluiten -- standaardtechniek, geen library nodig.
+function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx){
+  const PAGE_W=842, PAGE_H=595, MARGIN=24; // A4 landscape, pt
+  const availW=PAGE_W-2*MARGIN, availH=PAGE_H-2*MARGIN;
+  const scale=Math.min(availW/imgWpx, availH/imgHpx);
+  const drawW=imgWpx*scale, drawH=imgHpx*scale;
+  const tx=(PAGE_W-drawW)/2, ty=(PAGE_H-drawH)/2;
+  const enc=new TextEncoder();
+  const contentStream=drawW.toFixed(2)+" 0 0 "+drawH.toFixed(2)+" "+tx.toFixed(2)+" "+ty.toFixed(2)+" cm /Im1 Do";
+  const contentStr="q\n"+contentStream+"\nQ";
+  const contentBytes=enc.encode(contentStr);
+
+  const chunks=[]; let offset=0; const objOffsets=[];
+  function push(bytesOrStr){ const b=(typeof bytesOrStr==="string")?enc.encode(bytesOrStr):bytesOrStr; chunks.push(b); offset+=b.length; }
+  function beginObj(n){ objOffsets[n]=offset; push(n+" 0 obj\n"); }
+
+  push("%PDF-1.4\n");
+  beginObj(1); push("<</Type /Catalog /Pages 2 0 R>>\nendobj\n");
+  beginObj(2); push("<</Type /Pages /Kids [3 0 R] /Count 1>>\nendobj\n");
+  beginObj(3); push("<</Type /Page /Parent 2 0 R /MediaBox [0 0 "+PAGE_W+" "+PAGE_H+"] "+
+    "/Resources <</XObject <</Im1 4 0 R>>>> /Contents 5 0 R>>\nendobj\n");
+  beginObj(4); push("<</Type /XObject /Subtype /Image /Width "+imgWpx+" /Height "+imgHpx+
+    " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+jpegBytes.length+">>\nstream\n");
+  push(jpegBytes);
+  push("\nendstream\nendobj\n");
+  beginObj(5); push("<</Length "+contentBytes.length+">>\nstream\n");
+  push(contentBytes);
+  push("\nendstream\nendobj\n");
+
+  const xrefStart=offset;
+  let xref="xref\n0 6\n0000000000 65535 f \n";
+  for(let i=1;i<=5;i++) xref+=String(objOffsets[i]).padStart(10,"0")+" 00000 n \n";
+  push(xref);
+  push("trailer\n<</Size 6 /Root 1 0 R>>\nstartxref\n"+xrefStart+"\n%%EOF");
+
+  return new Blob(chunks, {type:"application/pdf"});
 }
 
 /* ================= GRAFIEKEN ================= */
