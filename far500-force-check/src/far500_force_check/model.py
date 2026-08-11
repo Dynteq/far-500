@@ -118,4 +118,5 @@ class Analysis:
 
     @property
     def overall_pass(self) -> bool:
-        return self.c1_ok and self.c2_ok and self.c3_ok and self.c4_ok
+        base = self.c1_ok and self.c2_ok and self.c3_ok
+        return base and self.c4_ok if self.criteria.C4_AFFECTS_OVERALL else base

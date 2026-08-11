@@ -47,6 +47,42 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-11** (rapport-grafiek + C4-normwijziging, op verzoek):
+  - **Grafiek in het analyse-rapport (XLSX/PDF) vervangen.** De twee
+    tijd-gebaseerde grafieken ("Bedienkracht vs. toegestane envelope" en
+    "Handvathoogte vs. tijd") zijn vervangen door **één** grafiek die er
+    identiek uitziet als de live "Kracht vs. hoek"-grafiek in de UI: vaste
+    assen hoek **-50°(links)..+5°(rechts)**, kracht **-250N(onder)..+250N(boven)**
+    — hergebruikt de al-bestaande `ANGLE_MIN/MAX`/`FORCE_MIN/MAX`/`clamp()` uit
+    de GRAFIEKEN-sectie i.p.v. eigen constanten. Punten die C1/C2 (kracht >
+    envelope) óf C3 (handvathoogte > H_MAX) overschrijden worden rood i.p.v.
+    cyaan gemarkeerd (`drawAngleForceChart()`, vervangt `drawEnvelopeChart`/
+    `drawHeightChart` die zijn verwijderd). `runForceCheck()` geeft nu ook
+    `height_violation_indices` (C3 per sample) terug, naast de bestaande
+    kracht-`violation_indices` (C1/C2).
+  - **A6 — C4 (snelheid/versnelling) telt niet meer mee in het eindoordeel.**
+    Op aangeven van de gebruiker: C4 is geen officiële eis, dus een
+    C4-overschrijding mag geen FAIL veroorzaken. Doorgevoerd in **beide**
+    implementaties voor consistentie (zie ook de "twee implementaties, hou ze
+    in sync"-notitie verderop): far500-force-check kreeg een nieuwe
+    `Criteria.C4_AFFECTS_OVERALL` (default `False`, dus ook automatisch een
+    `--c4-affects-overall`-CLI-flag via het generieke `fields(Criteria)`-mechanisme
+    in `cli.py`) en `Analysis.overall_pass` respecteert die vlag; de
+    JS-poort in `FAR-500.html` kreeg dezelfde `CRIT.C4_AFFECTS_OVERALL`
+    (default `false`). C4 wordt nog wel gerapporteerd (PASS/FAIL, gelabeld
+    "C4 (info)") maar beïnvloedt de exit-code/eindoordeel niet meer zolang
+    die vlag op de default staat. far500-force-check's README (Criteria-tabel)
+    en de twee JS/Python-teksten voor de C4-regel zijn bijgewerkt om dit uit
+    te leggen. Twee bestaande tests in `far500-force-check/tests/test_engine.py`
+    (die een C4-only-overschrijding als `overall_pass is False` verwachtten)
+    zijn aangepast + een nieuwe test toegevoegd die bevestigt dat
+    `C4_AFFECTS_OVERALL=True` het oude gedrag terugzet — alle 30 tests slagen.
+  - **Getest**: `pytest` (far500-force-check, 30/30), en voor de UI-kant een
+    headless-jsdom-run die bevestigt dat een C4-only-overschrijding nu
+    `overall_pass=true` geeft, dat een C3-overschrijding wél in
+    `height_violation_indices` terechtkomt, en dat de XLSX/PDF nog steeds
+    geldig zijn (`zipfile`/`pypdf`). **Niet visueel gecontroleerd** hoe de
+    nieuwe grafiek er in een echte PDF-viewer uitziet.
 - **2026-08-11** (eenmalige data-migratie): alle 9 bestaande metingen onder de
   `recordings`-release hadden de hoek in het oude (vóór-2026-08-06) teken
   vastgelegd en konden daardoor niet meer correct met de huidige (omgedraaide)

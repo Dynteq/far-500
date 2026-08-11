@@ -164,9 +164,10 @@ def test_hoogte_boven_170_fail_onafhankelijk_van_kracht():
     assert analysis.max_height_cm == pytest.approx(175.0)
 
 
-# ---- DoD (e): snelheid/versnelling boven limiet -> FAIL ----
+# ---- DoD (e): snelheid/versnelling boven limiet -> C4 FAIL, maar A6: C4 is geen
+# officiële eis, dus overall_pass blijft standaard ongevoelig voor C4 ----
 
-def test_snelheid_boven_limiet_fail():
+def test_snelheid_boven_limiet_geeft_c4_fail_maar_geen_overall_fail():
     samples = build_stroke(0.0, 0.05, 0, 40, identity_height, lambda dist: 50.0, step=1.0)
     samples[5].speed_cm_s = 25.0  # > default vmax 20 cm/s
     rec = make_recording(samples)
@@ -174,14 +175,27 @@ def test_snelheid_boven_limiet_fail():
 
     assert analysis.c1_ok is True and analysis.c2_ok is True and analysis.c3_ok is True
     assert analysis.c4_ok is False
-    assert analysis.overall_pass is False
+    assert analysis.overall_pass is True  # A6: C4 telt niet mee, tenzij C4_AFFECTS_OVERALL
 
 
-def test_versnelling_boven_limiet_fail():
+def test_versnelling_boven_limiet_geeft_c4_fail_maar_geen_overall_fail():
     samples = build_stroke(0.0, 0.05, 0, 40, identity_height, lambda dist: 50.0, step=1.0)
     samples[5].accel_cm_s2 = 999.0  # > default amax 40 cm/s2
     rec = make_recording(samples)
     analysis = analyze(rec, C)
+
+    assert analysis.c4_ok is False
+    assert analysis.overall_pass is True
+
+
+def test_c4_affects_overall_kan_expliciet_aangezet_worden():
+    from dataclasses import replace
+
+    samples = build_stroke(0.0, 0.05, 0, 40, identity_height, lambda dist: 50.0, step=1.0)
+    samples[5].speed_cm_s = 25.0  # > default vmax 20 cm/s
+    rec = make_recording(samples)
+    strict = replace(C, C4_AFFECTS_OVERALL=True)
+    analysis = analyze(rec, strict)
 
     assert analysis.c4_ok is False
     assert analysis.overall_pass is False

@@ -697,7 +697,8 @@ function setBanner(){
 // de Python-versie wijzigt; zie far500-force-check/README.md voor de
 // normatieve tekst en de A1-A5-interpretatiekeuzes.
 const CRIT={H_THRESH:135,H_MAX:170,F_LOW:140,F_HIGH:85,GRACE_FACT:1.5,GRACE_ARC:20,
-  DETECT_ARC:10,REV_HYST:2.0,USE_ABS_FORCE:true,GRACE_ABOVE:true,HEIGHT_MAX_IS_FAIL:true};
+  DETECT_ARC:10,REV_HYST:2.0,USE_ABS_FORCE:true,GRACE_ABOVE:true,HEIGHT_MAX_IS_FAIL:true,
+  C4_AFFECTS_OVERALL:false};   // A6 (far500-force-check/README.md): C4 is geen officiële eis
 const DEFAULT_VMAX=20, DEFAULT_AMAX=40;
 function maxOf(arr){ let m=-Infinity; for(let i=0;i<arr.length;i++) if(arr[i]>m) m=arr[i]; return m===-Infinity?0:m; }
 
@@ -770,7 +771,7 @@ function runForceCheck(series, vmaxLimit, amaxLimit){
       anchorIdx:a.idx, anchorArc:a.arc, anchorReason:a.reason};
   });
   const results=buildEnvelope(series,moves);
-  const violationIdx=[]; const lowForces=[], highForces=[];
+  const violationIdx=[]; const heightViolationIdx=[]; const lowForces=[], highForces=[];
   for(let i=0;i<n;i++){ const r=results[i]; if(!r) continue;
     if(!r.force_ok) violationIdx.push(i);
     if(r.region==="laag") lowForces.push(r.force_abs_N); else highForces.push(r.force_abs_N); }
@@ -780,13 +781,18 @@ function runForceCheck(series, vmaxLimit, amaxLimit){
     if(r.region==="hoog" && !r.force_ok) c2_ok=false; }
   const maxHeight=maxOf(series.handle_height_cm);
   const c3_ok=!CRIT.HEIGHT_MAX_IS_FAIL || maxHeight<=CRIT.H_MAX;
+  for(let i=0;i<n;i++){ if(CRIT.HEIGHT_MAX_IS_FAIL && series.handle_height_cm[i]>CRIT.H_MAX) heightViolationIdx.push(i); }
   const vmax=vmaxLimit||DEFAULT_VMAX, amax=amaxLimit||DEFAULT_AMAX;
   const maxSpeed=maxOf(series.speed_cm_s.map(Math.abs)), maxAccel=maxOf(series.accel_cm_s2.map(Math.abs));
   const c4_ok=maxSpeed<=vmax && maxAccel<=amax;
+  // A6 (far500-force-check/README.md): C4 is geen officiële eis, telt niet mee
+  // in overall_pass tenzij CRIT.C4_AFFECTS_OVERALL expliciet aan staat.
+  const base_pass=c1_ok&&c2_ok&&c3_ok;
   return {moves, results, c1_ok, c2_ok, c3_ok, c4_ok,
     peak_force_low_N: lowForces.length?maxOf(lowForces):0, peak_force_high_N: highForces.length?maxOf(highForces):0,
     max_height_cm:maxHeight, max_speed_cm_s:maxSpeed, max_accel_cm_s2:maxAccel,
-    violation_indices:violationIdx, overall_pass:c1_ok&&c2_ok&&c3_ok&&c4_ok};
+    violation_indices:violationIdx, height_violation_indices:heightViolationIdx,
+    overall_pass: CRIT.C4_AFFECTS_OVERALL ? (base_pass&&c4_ok) : base_pass};
 }
 function buildSeries(){
   return {
@@ -805,7 +811,7 @@ function criteriaTextLines(){
     "C1 — onder "+c.H_THRESH.toFixed(0)+" cm handvathoogte: kracht ≤ "+c.F_LOW.toFixed(0)+" N (eerste "+c.GRACE_ARC.toFixed(0)+" cm vanaf het anker: ≤ "+(c.GRACE_FACT*c.F_LOW).toFixed(1)+" N breakaway-marge).",
     "C2 — boven "+c.H_THRESH.toFixed(0)+" cm handvathoogte: kracht ≤ "+c.F_HIGH.toFixed(0)+" N (zelfde breakaway-marge tot "+(c.GRACE_FACT*c.F_HIGH).toFixed(1)+" N, A1 GRACE_ABOVE="+c.GRACE_ABOVE+").",
     "C3 — handvathoogte ≤ "+c.H_MAX.toFixed(0)+" cm (A3 HEIGHT_MAX_IS_FAIL="+c.HEIGHT_MAX_IS_FAIL+").",
-    "C4 — snelheid ≤ Max snelheid, versnelling ≤ Max versnelling (uit de metadata, anders default "+DEFAULT_VMAX+"/"+DEFAULT_AMAX+").",
+    "C4 — snelheid ≤ Max snelheid, versnelling ≤ Max versnelling (uit de metadata, anders default "+DEFAULT_VMAX+"/"+DEFAULT_AMAX+"). Informatief: geen officiële eis, telt "+(c.C4_AFFECTS_OVERALL?"wél":"niet")+" mee in het eindoordeel (A6).",
     "Anker: overschrijdt |F| de basislimiet binnen de eerste "+c.DETECT_ARC.toFixed(0)+" cm van een beweging, dan ligt het anker op dat kruisingspunt; anders op het bewegingsbegin. Het "+c.GRACE_ARC.toFixed(0)+" cm-breakaway-venster geldt in beide gevallen vanaf dat anker.",
     "Kracht getoetst als |force_N| (A2, USE_ABS_FORCE="+c.USE_ABS_FORCE+"). Richtingsdetectie met REV_HYST="+c.REV_HYST.toFixed(1)+" cm hysterese.",
   ];
@@ -816,7 +822,7 @@ function outcomeRows(res){
     ["C1", res.c1_ok, "hoogste kracht onder "+c.H_THRESH.toFixed(0)+" cm = "+res.peak_force_low_N.toFixed(1)+" N ≤ "+c.F_LOW.toFixed(0)+"/"+(c.GRACE_FACT*c.F_LOW).toFixed(1)+" N"],
     ["C2", res.c2_ok, "hoogste kracht boven "+c.H_THRESH.toFixed(0)+" cm = "+res.peak_force_high_N.toFixed(1)+" N ≤ "+c.F_HIGH.toFixed(0)+"/"+(c.GRACE_FACT*c.F_HIGH).toFixed(1)+" N"],
     ["C3", res.c3_ok, "max hoogte = "+res.max_height_cm.toFixed(1)+" cm (limiet "+c.H_MAX.toFixed(0)+" cm)"],
-    ["C4", res.c4_ok, "piek snelheid = "+res.max_speed_cm_s.toFixed(1)+" cm/s, piek versnelling = "+res.max_accel_cm_s2.toFixed(1)+" cm/s2"],
+    ["C4 (info)", res.c4_ok, "piek snelheid = "+res.max_speed_cm_s.toFixed(1)+" cm/s, piek versnelling = "+res.max_accel_cm_s2.toFixed(1)+" cm/s2"+(c.C4_AFFECTS_OVERALL?"":" — geen officiële eis, telt niet mee in het eindoordeel")],
   ];
 }
 function wrapText(ctx,text,maxWidth){
@@ -826,46 +832,39 @@ function wrapText(ctx,text,maxWidth){
   if(cur) lines.push(cur);
   return lines;
 }
-function drawEnvelopeChart(ctx,x,y,w,h,series,res){
+// Zelfde vaste assen als de live "Kracht vs. hoek"-grafiek (ANGLE_MIN/MAX,
+// FORCE_MIN/MAX, gedeclareerd in de GRAFIEKEN-sectie verderop) -- op verzoek
+// i.p.v. de eerdere tijd-gebaseerde envelope-/hoogte-grafieken, zodat het
+// rapport er hetzelfde uitziet als wat je live op het scherm ziet. Puntjes die
+// C1/C2 (kracht > envelope) OF C3 (handvathoogte > H_MAX) overschreden worden
+// rood i.p.v. het gebruikelijke cyaan gemarkeerd, zodat de PASS/FAIL-info die
+// de oude envelope-/hoogte-grafiek gaf niet helemaal verloren gaat. C4 wordt
+// hier bewust niet in meegenomen (A6: geen officiële eis).
+function drawAngleForceChart(ctx,x,y,w,h,series,res){
   const n=series.t_s.length;
-  let peakForce=0, peakEnv=0;
-  for(let i=0;i<n;i++){ const r=res.results[i]; if(!r) continue;
-    if(r.force_abs_N>peakForce) peakForce=r.force_abs_N; if(r.envelope_N>peakEnv) peakEnv=r.envelope_N; }
-  const yMax=Math.max(1.1*peakForce,1.1*peakEnv,1);
-  const tMax=Math.max(series.t_s[n-1],0.001);
-  const X=t=>x+t/tMax*w, Y=v=>y+h-(Math.min(v,yMax)/yMax*h);
-  const env=i=>res.results[i]?res.results[i].envelope_N:0;
-  ctx.fillStyle="#9BE38A"; ctx.beginPath(); ctx.moveTo(X(series.t_s[0]),Y(0));
-  for(let i=0;i<n;i++) ctx.lineTo(X(series.t_s[i]),Y(env(i)));
-  ctx.lineTo(X(series.t_s[n-1]),Y(0)); ctx.closePath(); ctx.fill();
-  ctx.fillStyle="#F0A3A3"; ctx.beginPath(); ctx.moveTo(X(series.t_s[0]),Y(yMax));
-  for(let i=0;i<n;i++) ctx.lineTo(X(series.t_s[i]),Y(env(i)));
-  ctx.lineTo(X(series.t_s[n-1]),Y(yMax)); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle="#1A1A1A"; ctx.lineWidth=2; ctx.beginPath();
-  for(let i=0;i<n;i++){ const px=X(series.t_s[i]), py=Y(res.results[i]?res.results[i].force_abs_N:0); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
-  ctx.stroke();
-  ctx.fillStyle="#CC0000";
-  res.violation_indices.forEach(i=>{ ctx.beginPath(); ctx.arc(X(series.t_s[i]),Y(res.results[i].force_abs_N),4,0,7); ctx.fill(); });
+  const X=d=>x+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*w;
+  const Y=nn=>y+(1-(clamp(nn,FORCE_MIN,FORCE_MAX)-FORCE_MIN)/(FORCE_MAX-FORCE_MIN))*h;
+  ctx.strokeStyle="#bbb"; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.beginPath();
+  ctx.moveTo(x,Y(0)); ctx.lineTo(x+w,Y(0)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle="#00b4ce"; ctx.lineWidth=1.4; ctx.globalAlpha=0.55; ctx.beginPath();
+  let started=false;
+  for(let i=0;i<n;i++){ const deg=series.angle_deg[i], N=series.force_N[i];
+    if(isNaN(deg)||N===""||isNaN(N)) continue;
+    const px=X(deg), py=Y(N); started?ctx.lineTo(px,py):ctx.moveTo(px,py); started=true; }
+  ctx.stroke(); ctx.globalAlpha=1;
+  const violSet=new Set([...res.violation_indices, ...res.height_violation_indices]);
+  for(let i=0;i<n;i++){ const deg=series.angle_deg[i], N=series.force_N[i];
+    if(isNaN(deg)||N===""||isNaN(N)) continue;
+    const bad=violSet.has(i);
+    ctx.fillStyle=bad?"#CC0000":"#00b4ce";
+    ctx.beginPath(); ctx.arc(X(deg),Y(N), bad?3.4:2.2, 0, 7); ctx.fill(); }
   ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,y,w,h);
-  ctx.fillStyle="#333"; ctx.font="13px sans-serif";
-  ctx.fillText("0 s",x,y+h+16); ctx.fillText(tMax.toFixed(1)+" s",x+w-34,y+h+16);
-  ctx.fillText(yMax.toFixed(0)+" N",x,y+4);
-}
-function drawHeightChart(ctx,x,y,w,h,series){
-  const n=series.t_s.length;
-  const hts=series.handle_height_cm;
-  const hMaxScale=Math.max(1.1*CRIT.H_MAX, maxOf(hts))+10;
-  const tMax=Math.max(series.t_s[n-1],0.001);
-  const X=t=>x+t/tMax*w, Y=v=>y+h-(v/hMaxScale*h);
-  ctx.strokeStyle="#4A90D9"; ctx.lineWidth=2; ctx.beginPath();
-  for(let i=0;i<n;i++){ const px=X(series.t_s[i]), py=Y(hts[i]); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
-  ctx.stroke();
-  [["H_THRESH",CRIT.H_THRESH],["H_MAX",CRIT.H_MAX]].forEach(([lbl,v])=>{
-    ctx.strokeStyle="#999"; ctx.setLineDash([5,4]); ctx.lineWidth=1; ctx.beginPath();
-    ctx.moveTo(x,Y(v)); ctx.lineTo(x+w,Y(v)); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle="#666"; ctx.font="12px sans-serif"; ctx.fillText(lbl+" ("+v+"cm)",x+4,Y(v)-4);
-  });
-  ctx.strokeStyle="#666"; ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle="#333"; ctx.font="12px sans-serif";
+  ctx.fillText(ANGLE_MIN.toFixed(0)+"°", x-2, y+h+16);
+  ctx.fillText("+"+ANGLE_MAX.toFixed(0)+"°", x+w-24, y+h+16);
+  ctx.fillText("hoek (°)", x+w/2-22, y+h+16);
+  ctx.fillText("+"+FORCE_MAX.toFixed(0)+" N", x, y+4);
+  ctx.fillText(FORCE_MIN.toFixed(0)+" N", x, y+h-4);
 }
 // Bouwt EEN groot rapport-canvas (titel/setup/criteria/PASS-FAIL-tabel/
 // eindoordeel + beide grafieken). Wordt zowel als afbeelding in de
@@ -885,13 +884,13 @@ function buildAnalyseReportCanvas(){
   meas.font="12.5px sans-serif";
   const critLines=[]; criteriaTextLines().forEach(line=>wrapText(meas,line,W-2*PAD-8).forEach(l=>critLines.push(l)));
 
+  const CHART_H=400;
   const H = PAD + 30 + 30 + 26 + 26 + 20
     + 24 + 7*lineH + 16
     + 24 + critLines.length*lineH + 16
     + 24 + 24 + 4*lineH + 16
     + 50 + 20
-    + 24 + 300 + 30
-    + 24 + 260 + PAD;
+    + 24 + CHART_H + PAD;
 
   const canvas=document.createElement("canvas");
   canvas.width=W; canvas.height=Math.round(H);
@@ -936,10 +935,8 @@ function buildAnalyseReportCanvas(){
   ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 26px sans-serif";
   ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+10, y-4);
   y+=20+24;
-  ctx.fillStyle="#111"; ctx.font="bold 14px sans-serif"; ctx.fillText("Bedienkracht vs. toegestane envelope", PAD, y); y+=8;
-  drawEnvelopeChart(ctx, PAD, y, W-2*PAD, 300, series, res); y+=300+30;
-  ctx.font="bold 14px sans-serif"; ctx.fillText("Handvathoogte vs. tijd", PAD, y); y+=8;
-  drawHeightChart(ctx, PAD, y, W-2*PAD, 260, series);
+  ctx.fillStyle="#111"; ctx.font="bold 14px sans-serif"; ctx.fillText("Kracht vs. hoek (rood = C1/C2/C3-overschrijding)", PAD, y); y+=8;
+  drawAngleForceChart(ctx, PAD, y, W-2*PAD, CHART_H, series, res);
   return {canvas, series, res};
 }
 async function canvasToJpegBytes(canvas,quality){

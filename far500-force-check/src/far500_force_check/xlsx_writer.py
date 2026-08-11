@@ -73,7 +73,9 @@ def _write_setup_analyse(ws: Worksheet, analysis: Analysis) -> None:
         f"C2 — boven {criteria.H_THRESH:.0f} cm handvathoogte: kracht ≤ {criteria.F_HIGH:.0f} N "
         f"(zelfde breakaway-marge tot {criteria.GRACE_FACT * criteria.F_HIGH:.1f} N, A1 GRACE_ABOVE={criteria.GRACE_ABOVE}).",
         f"C3 — handvathoogte ≤ {criteria.H_MAX:.0f} cm (A3 HEIGHT_MAX_IS_FAIL={criteria.HEIGHT_MAX_IS_FAIL}).",
-        "C4 — snelheid ≤ Max snelheid, versnelling ≤ Max versnelling (uit de metadata, anders default 20/40).",
+        "C4 — snelheid ≤ Max snelheid, versnelling ≤ Max versnelling (uit de metadata, anders default 20/40). "
+        f"Informatief: geen officiële eis, telt {'wél' if criteria.C4_AFFECTS_OVERALL else 'niet'} mee in het "
+        "eindoordeel (A6 C4_AFFECTS_OVERALL).",
         f"Anker: overschrijdt |F| de basislimiet binnen de eerste {criteria.DETECT_ARC:.0f} cm van een beweging, "
         "dan ligt het anker op dat kruisingspunt; anders op het bewegingsbegin. Het "
         f"{criteria.GRACE_ARC:.0f} cm-breakaway-venster geldt in beide gevallen vanaf dat anker (zie README).",
@@ -98,7 +100,12 @@ def _write_setup_analyse(ws: Worksheet, analysis: Analysis) -> None:
         ("C1", analysis.c1_ok, f"hoogste kracht onder {criteria.H_THRESH:.0f} cm = {analysis.peak_force_low_N:.1f} N ≤ {criteria.F_LOW:.0f}/{criteria.GRACE_FACT*criteria.F_LOW:.1f} N"),
         ("C2", analysis.c2_ok, f"hoogste kracht boven {criteria.H_THRESH:.0f} cm = {analysis.peak_force_high_N:.1f} N ≤ {criteria.F_HIGH:.0f}/{criteria.GRACE_FACT*criteria.F_HIGH:.1f} N"),
         ("C3", analysis.c3_ok, f"max hoogte = {analysis.max_height_cm:.1f} cm (limiet {criteria.H_MAX:.0f} cm)"),
-        ("C4", analysis.c4_ok, f"piek snelheid = {analysis.max_speed_cm_s:.1f} cm/s, piek versnelling = {analysis.max_accel_cm_s2:.1f} cm/s2"),
+        (
+            "C4 (info)",
+            analysis.c4_ok,
+            f"piek snelheid = {analysis.max_speed_cm_s:.1f} cm/s, piek versnelling = {analysis.max_accel_cm_s2:.1f} cm/s2"
+            + ("" if criteria.C4_AFFECTS_OVERALL else " — geen officiële eis, telt niet mee in het eindoordeel"),
+        ),
     ]
     for label, ok, note in outcome_rows:
         ws.cell(row=row, column=1, value=label)

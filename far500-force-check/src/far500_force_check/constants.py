@@ -42,3 +42,9 @@ class Criteria:
 
     HEIGHT_MAX_IS_FAIL: bool = True
     """A3 — handvathoogte > H_MAX is een testfout (C3 FAIL)."""
+
+    C4_AFFECTS_OVERALL: bool = False
+    """A6 — C4 (snelheid/versnelling) is geen officiële eis: een C4-overschrijding
+    wordt nog wel gerapporteerd (c4_ok), maar telt standaard niet mee in
+    overall_pass/de exit-code. Zet op True om C4 weer als harde FAIL-reden te
+    laten meetellen."""

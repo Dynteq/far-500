@@ -49,7 +49,7 @@ meetuitkomst, geen tool-fout.
 | C1 | Onder `H_THRESH` (135 cm) handvathoogte: kracht ≤ `F_LOW` (140 N). Bij het begin van een beweging mag de kracht binnen de eerste `GRACE_ARC` cm (20 cm) vanaf het anker oplopen tot `GRACE_FACT`×`F_LOW` (210 N). | `H_THRESH`, `F_LOW`, `GRACE_ARC`, `GRACE_FACT` |
 | C2 | Boven `H_THRESH`: kracht ≤ `F_HIGH` (85 N), met dezelfde breakaway-marge tot `GRACE_FACT`×`F_HIGH` (127,5 N) — **A1**: dit geldt ook boven 135 cm (`GRACE_ABOVE=True`). | `F_HIGH`, `GRACE_ABOVE` |
 | C3 | Handvathoogte ≤ `H_MAX` (170 cm) — **A3**: overschrijding is een harde FAIL (`HEIGHT_MAX_IS_FAIL=True`). | `H_MAX` |
-| C4 | Snelheid ≤ *Max snelheid* en versnelling ≤ *Max versnelling* uit de metadata van de export (anders default 20 cm/s / 40 cm/s²). | — |
+| C4 | Snelheid ≤ *Max snelheid* en versnelling ≤ *Max versnelling* uit de metadata van de export (anders default 20 cm/s / 40 cm/s²) — **A6**: dit is geen officiële eis, C4 wordt nog wel gerapporteerd (PASS/FAIL) maar telt standaard niet mee in `overall_pass`/de exit-code (`C4_AFFECTS_OVERALL=False`; zet op `True` om C4 weer als harde FAIL-reden te laten meetellen). | `C4_AFFECTS_OVERALL` |
 
 Kracht wordt getoetst als `|force_N|` (druk én trek) — **A2**
 (`USE_ABS_FORCE=True`).
