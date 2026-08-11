@@ -47,6 +47,34 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-11** (eenmalige data-migratie): alle 9 bestaande metingen onder de
+  `recordings`-release hadden de hoek in het oude (vóór-2026-08-06) teken
+  vastgelegd en konden daardoor niet meer correct met de huidige (omgedraaide)
+  conventie ingeladen/geanalyseerd worden. Op verzoek voor elk bestand een
+  `..._flip.xlsx`-kopie gemaakt: `angle_deg` per sample geflipt (niet-nul
+  waarden van teken gewisseld, 0 blijft 0) en, waar aanwezig, de
+  kalibratie-hoeken "hoek hoog (deg)"/"hoek laag (deg)" in de metadata
+  eveneens geflipt (puur informatief — de reeds berekende L/H-waarden waarmee
+  de "Laden"-knop werkt zijn NIET herberekend en dus ongewijzigd, dat blijven
+  geldige fysieke afmetingen). Overige kolommen (t_s, force_N, en de
+  destijds-al-berekende arc_cm/speed/accel/handle_height, indien aanwezig)
+  bewust ongewijzigd gelaten — die laatste vier worden door de "Laden"-knop
+  toch nooit gelezen (alleen t_s/angle_deg/force_N + meta), dus blijven ze
+  onschadelijk stil verouderd staan in de rauwe kolommen van dat ene tabblad.
+  Uitgevoerd met een los Python-script (`zipfile`+`ElementTree`, niet
+  gecommit — eenmalig, buiten de reguliere codebase) dat elk bestand
+  downloadde via `gh release download recordings`, de hoekwaarden in
+  `xl/worksheets/sheet1.xml` aanpaste, en de 9 nieuwe bestanden terugzette
+  met `gh release upload recordings` (zelfde release, originelen ongemoeid
+  gelaten). Gevalideerd op drie niveaus: (1) Python-vergelijking orig-vs-flip
+  rij-voor-rij bevestigt dat alleen kolom B/D wijzigen en het teken correct
+  omdraait; (2) het geflipte bestand door de daadwerkelijke
+  `parseFarMetingWorkbook()`-lezer uit `FAR-500.html` gehaald (via jsdom) —
+  laadt foutloos; (3) één geflipt bestand ook via de live
+  `far500-upload-worker`-downloadproxy opgehaald en als geldig zip/XLSX
+  bevestigd. Alle 18 assets (9 origineel + 9 `_flip`) staan nu naast elkaar
+  onder `github.com/DynteqBV/far-500/releases/tag/recordings` en zijn dus
+  beide zichtbaar in de "Oude meting laden"-dropdown.
 - **2026-08-11**: bedienkracht-analyse (C1-C4) rechtstreeks in de laptop-UI
   toegevoegd, op verzoek. Drie knoppen i.p.v. één: de bestaande "Download
   XLSX" heet nu **"Meetgegevens XLSX"** (ongewijzigd gedrag — ruwe
