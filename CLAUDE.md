@@ -47,6 +47,54 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (grafiek-optimalisatie: oranje breakaway-kader eenzijdig +
+  PDF portrait A4 + live grafiek = PDF-grafiek, op verzoek), alles in
+  `FAR-500.html`, `drawAngleForceChart()`:
+  - **Oranje breakaway-kader niet meer gespiegeld naar het verkeerde teken.**
+    Voorheen werd het 150%-marge-kader symmetrisch rond 0N getekend (zowel
+    boven als onder groen), wat overlapte/verwarrend was omdat een
+    omhooggaande beweging altijd trekkracht (positief) geeft en een
+    omlaaggaande beweging afhankelijk van leeg/beladen positief óf negatief.
+    Nu: (1) het kader zit altijd op 0-20cm cirkelbaanlengte vanaf de
+    **start** van de beweging (`move.arcStart`, dezelfde referentie als de
+    afstand-tickmarks -- bewust niet het engine-anker); (2) bij de
+    omhooggaande beweging (eerste "up" in `res.moves`) uitsluitend aan de
+    positieve kant (+base..+150%·base); (3) bij de omlaaggaande beweging
+    (eerste "down") aan de kant die het gemiddelde teken van de gemeten
+    kracht in dat venster aangeeft (`graceForceSign()`, sommeert `force_N`
+    over de samples binnen 20cm van `arcStart`). Geverifieerd met een
+    synthetische meting (positieve kracht bij omhoog, negatieve bij omlaag):
+    0 hoek-kolommen met oranje op beide kanten tegelijk (was de bug), 104
+    kolommen boven / 104 onder, precies gescheiden per beweging.
+  - **PDF naar A4 portrait** (was landscape): `PAGE_W=595, PAGE_H=842`. Omdat
+    de breedte nu de beperkende dimensie is, vult de grafiek vanzelf de
+    paginabreedte met de bestaande marge (`MARGIN=24`, ongewijzigde
+    schaal-/centreerlogica in `buildAnalysisPdfBlob()`).
+  - **Grafiek 1,5x hoger**: `CHART_H` 478→678px (plot-rechthoek 400→600px,
+    TOPAX/BOTAX-marges ongewijzigd) voor preciezere krachtaflezing.
+  - **Dikkere lijnen**: F=0N-nullijn 1→2.2px, meetdata-lijn 1.4→2.8px (2x,
+    op verzoek).
+  - **Labels "omhoog"/"omlaag"** toegevoegd op vaste posities (-30° resp.
+    -15°) als oriëntatiehulp.
+  - **Live "Kracht vs. hoek"-grafiek (`drawXY()`) hergebruikt nu
+    `drawAngleForceChart()`** zodra L én H bekend zijn (`haveHL()`) -- zelfde
+    envelope/assen/labels/lijndiktes als het PDF-rapport, incl. een expliciet
+    witte achtergrond (die routine gebruikt vaste hex-kleuren i.p.v.
+    thema-variabelen, dus zonder witte achtergrond zou het in dark mode
+    onleesbaar zijn). Canvas-hoogte 300→420px voor de extra assen. Zonder
+    L/H valt de live grafiek terug op de oude eenvoudige weergave (gewone
+    lijn/punten, thema-kleuren, geen envelope).
+  - **Snelheid/versnelling-smoothing** (`smooth4()`, vorige sessie later op
+    deze dag toegevoegd) geldt al voor beide grafieken en is dit keer
+    ongewijzigd bevestigd te werken.
+  - **Getest**: `node --check`, en jsdom-smoketests die bevestigen: (1) het
+    oranje kader nooit meer op beide kanten binnen dezelfde hoek-kolom; (2)
+    de PDF-MediaBox exact 595x842pt is; (3) `lineWidth` 2.2 en 2.8 daad-
+    werkelijk gebruikt worden; (4) `redraw()` zowel mét als zonder L/H
+    foutloos doorloopt (live-grafiek fallback-pad). **Niet visueel
+    gecontroleerd** in een echte browser/PDF-viewer (dit environment heeft
+    geen browser-tooling) -- graag zelf even een meting met geometrie
+    bekijken, zowel live als in het PDF-rapport.
 - **2026-08-19** (bugfix handle_height_cm + snelheid/versnelling-smoothing,
   op verzoek na een gemelde fout), alles in `FAR-500.html`:
   - **Probleem**: in een echte meting (Falco Premium, hoek hoog ≈ -0.7°, hoek

@@ -243,7 +243,7 @@
     </div>
     <div class="chart-wrap">
       <h2>Kracht vs. hoek</h2>
-      <canvas id="xyCanvas" data-h="300"></canvas>
+      <canvas id="xyCanvas" data-h="420"></canvas>
     </div>
     <div class="chart-wrap adv-only" id="histWrap">
       <h2>Geschiedenis — laatste metingen op device</h2>
@@ -262,7 +262,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 13:54</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 14:15</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -960,24 +960,48 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
   const degForHeight=target=>{ if(L==null||Hh==null) return null; const s=(Hh-target)/L;
     if(s<-1||s>1) return null; return Math.asin(s)/D2R; };
 
-  // Breakaway-marge (150%) vensters in hoek-ruimte, afgeleid uit res.moves /
-  // anchorArc -- zelfde CRIT.GRACE_ARC/GRACE_FACT als de engine
-  // (runForceCheck/buildEnvelope), dus consistent met welke samples de engine
-  // zelf als "in_grace" markeert (arc_cm is opgebouwd met dezelfde th0-
-  // referentie, dus hoek<->arc-omrekening hier is exact, geen benadering).
+  // Bepaal de (eerste) omhoog- en omlaaggaande beweging -- gebruikt voor
+  // zowel het oranje breakaway-kader hieronder als de afstand-tickmarks
+  // verderop.
   const th0=n?series.angle_deg[0]*D2R:0;
-  const graceWindows=[];
-  if(L!=null && res && res.moves) res.moves.forEach(mv=>{
-    const sign=mv.direction==="up"?1:-1;
-    const arcA=mv.anchorArc, arcB=mv.anchorArc+sign*CRIT.GRACE_ARC;
+  let upMove=null, downMove=null;
+  if(L!=null && res && res.moves){
+    upMove=res.moves.find(m=>m.direction==="up")||null;
+    downMove=res.moves.find(m=>m.direction==="down")||null;
+  }
+  // Breakaway-marge (150%) kader: 0-20cm cirkelbaanlengte vanaf de START van
+  // de beweging (arcStart op de arc_cm-as -- dezelfde referentie als de
+  // afstand-tickmarks verderop, bewust niet het engine-anker). Bij OMHOOG is
+  // de kracht altijd positief (trekkracht): het kader zit daarom uitsluitend
+  // boven +base, nooit gespiegeld naar negatief. Bij OMLAAG kan de kracht
+  // positief (lege goot) of negatief (beladen goot) zijn -- welke kant van
+  // het kader getekend wordt volgt uit het teken van de gemiddelde kracht in
+  // diezelfde eerste 20cm van die beweging.
+  function graceWindowDeg(move,sign){
+    if(!move||L==null) return null;
+    const arcA=move.arcStart, arcB=move.arcStart+sign*CRIT.GRACE_ARC;
     const thA=th0-arcA/L, thB=th0-arcB/L;
-    graceWindows.push({lo:Math.min(thA,thB)/D2R, hi:Math.max(thA,thB)/D2R});
-  });
-  const inGraceDeg=deg=>graceWindows.some(g=>deg>=g.lo-1e-9&&deg<=g.hi+1e-9);
+    return {lo:Math.min(thA,thB)/D2R, hi:Math.max(thA,thB)/D2R};
+  }
+  function graceForceSign(move){
+    let sum=0;
+    for(let i=move.start;i<=move.end;i++){
+      if(Math.abs(series.arc_cm[i]-move.arcStart)<=CRIT.GRACE_ARC) sum+=series.force_N[i];
+    }
+    return sum<0?-1:1;
+  }
+  const upWin=upMove?Object.assign({sign:1},graceWindowDeg(upMove,1)):null;
+  const downWin=downMove?Object.assign({sign:graceForceSign(downMove)},graceWindowDeg(downMove,-1)):null;
+  const graceSignAt=deg=>{
+    if(upWin&&upWin.lo!=null&&deg>=upWin.lo-1e-9&&deg<=upWin.hi+1e-9) return upWin.sign;
+    if(downWin&&downWin.lo!=null&&deg>=downWin.lo-1e-9&&deg<=downWin.hi+1e-9) return downWin.sign;
+    return 0;
+  };
 
   // ---- achtergrond: rood (afkeur) overal, met groen (norm, C1/C2) en oranje
-  // (150%-breakaway-marge binnen de eerste 20cm van een beweging) daarover.
-  // Buiten 0..170cm handvathoogte (C3) blijft de kolom volledig rood. ----
+  // (150%-breakaway-marge binnen de eerste 20cm van een beweging, alleen aan
+  // de kant waar de kracht daadwerkelijk optreedt) daarover. Buiten
+  // 0..170cm handvathoogte (C3) blijft de kolom volledig rood. ----
   const steps=Math.max(120,Math.round(w));
   for(let s=0;s<steps;s++){
     const deg=ANGLE_MIN+(s+0.5)/steps*(ANGLE_MAX-ANGLE_MIN);
@@ -986,10 +1010,12 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
     const ht=heightAtDeg(deg);
     if(ht!=null && ht>=0 && ht<=CRIT.H_MAX){
       const base=ht<CRIT.H_THRESH?CRIT.F_LOW:CRIT.F_HIGH;
-      if(inGraceDeg(deg)){
+      const gSign=graceSignAt(deg);
+      if(gSign!==0){
         const outer=CRIT.GRACE_FACT*base;
         ctx.fillStyle="rgba(255,159,67,0.32)";
-        ctx.fillRect(px0,Y(outer),px1-px0,Y(-outer)-Y(outer));
+        if(gSign>0) ctx.fillRect(px0,Y(outer),px1-px0,Y(base)-Y(outer));
+        else ctx.fillRect(px0,Y(-base),px1-px0,Y(-outer)-Y(-base));
       }
       ctx.fillStyle="rgba(54,201,138,0.32)";
       ctx.fillRect(px0,Y(base),px1-px0,Y(-base)-Y(base));
@@ -1021,9 +1047,7 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
   // ---- afgelegde afstand op de cirkelbaan onderaan: korte streepjes op
   // 0/10/20 cm vanaf de start van de omhoog- resp. omlaaggaande beweging
   // (elk vanaf zijn eigen startpunt, dus twee onafhankelijke 0-punten) ----
-  if(L!=null && res && res.moves){
-    const upMove=res.moves.find(m=>m.direction==="up");
-    const downMove=res.moves.find(m=>m.direction==="down");
+  if(L!=null && (upMove || downMove)){
     const drawArcTicks=(move,sign,arrow)=>{
       if(!move) return;
       [0,10,20].forEach(d=>{
@@ -1043,9 +1067,9 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
   ctx.textAlign="left";
 
   // ---- kracht-nullijn + meetdata (boven op de achtergrond getekend) ----
-  ctx.strokeStyle="#bbb"; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.beginPath();
+  ctx.strokeStyle="#999"; ctx.lineWidth=2.2; ctx.setLineDash([4,3]); ctx.beginPath();
   ctx.moveTo(x,Y(0)); ctx.lineTo(x+w,Y(0)); ctx.stroke(); ctx.setLineDash([]);
-  ctx.strokeStyle="#00b4ce"; ctx.lineWidth=1.4; ctx.globalAlpha=0.55; ctx.beginPath();
+  ctx.strokeStyle="#00b4ce"; ctx.lineWidth=2.8; ctx.globalAlpha=0.55; ctx.beginPath();
   let started=false;
   for(let i=0;i<n;i++){ const deg=series.angle_deg[i], N=series.force_N[i];
     if(isNaN(deg)||N===""||isNaN(N)) continue;
@@ -1060,6 +1084,14 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
     const bad=violSet.has(i);
     ctx.fillStyle=bad?"#CC0000":"#00b4ce";
     ctx.beginPath(); ctx.arc(X(deg),Y(N), bad?3.4:2.2, 0, 7); ctx.fill(); }
+
+  // ---- vaste oriëntatie-labels "omhoog"/"omlaag", op verzoek ----
+  ctx.textAlign="center"; ctx.font="bold 12px sans-serif"; ctx.fillStyle="#333";
+  [[-30,"omhoog"],[-15,"omlaag"]].forEach(([degLbl,txt])=>{
+    if(degLbl<ANGLE_MIN||degLbl>ANGLE_MAX) return;
+    ctx.fillText(txt, X(degLbl), py+18);
+  });
+  ctx.textAlign="left";
 
   // ---- kader + assen-labels ----
   ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,py,w,ph);
@@ -1086,7 +1118,7 @@ function buildAnalyseReportCanvas(){
   meas.font="12.5px sans-serif";
   const critLines=[]; criteriaTextLines().forEach(line=>wrapText(meas,line,W-2*PAD-8).forEach(l=>critLines.push(l)));
 
-  const CHART_H=478;   // 400px plot-rechthoek + ruimte voor de hoogte-as (boven) en de hoek-/afstand-as (onder), zie TOPAX/BOTAX in drawAngleForceChart()
+  const CHART_H=678;   // 600px plot-rechthoek (1.5x van de oorspronkelijke 400px, op verzoek voor preciezere krachtaflezing) + ruimte voor de hoogte-as (boven) en de hoek-/afstand-as (onder), zie TOPAX/BOTAX in drawAngleForceChart()
   const H = PAD + 30 + 30 + 26 + 26 + 20
     + 24 + 7*lineH + 16
     + 24 + critLines.length*lineH + 16
@@ -1385,7 +1417,7 @@ function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
 // een baseline-JPEG rechtstreeks (zonder her-encoderen) als /DeviceRGB-XObject
 // insluiten -- standaardtechniek, geen library nodig.
 function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx){
-  const PAGE_W=842, PAGE_H=595, MARGIN=24; // A4 landscape, pt
+  const PAGE_W=595, PAGE_H=842, MARGIN=24; // A4 portrait, pt (op verzoek i.p.v. landscape)
   const availW=PAGE_W-2*MARGIN, availH=PAGE_H-2*MARGIN;
   const scale=Math.min(availW/imgWpx, availH/imgHpx);
   const drawW=imgWpx*scale, drawH=imgHpx*scale;
@@ -1462,9 +1494,27 @@ function drawTS(){
     x.fillText("GEFAALD"+(A.failA?" A":"")+(A.failB?" B":""), pad+6, 20); }
 }
 function drawXY(){
-  const {x,w,h}=fit(xyC); const pad=46; x.clearRect(0,0,w,h); axes(x,w,h,pad);
+  const {x,w,h}=fit(xyC); x.clearRect(0,0,w,h);
+  // Zodra L én H bekend zijn, hergebruikt de live grafiek exact dezelfde
+  // tekenroutine als het PDF/XLSX-rapport (drawAngleForceChart()) -- groen/
+  // oranje/rood-envelope, hoek-/hoogte-/afstand-assen, rode overschrijdingen.
+  // Die routine is ontworpen voor een wit rapport-canvas (vaste hex-kleuren,
+  // geen theme-variabelen), dus vult hier bewust ook een witte achtergrond
+  // i.p.v. de donker/licht-thema-kleur -- zo blijft de weergave altijd
+  // identiek aan de PDF, ongeacht het actieve thema.
+  if(haveHL()){
+    x.fillStyle="#fff"; x.fillRect(0,0,w,h);
+    const series=buildSeries();
+    const vmaxLimit=limitsOn()?(parseFloat($("vmax").value)||null):null;
+    const amaxLimit=limitsOn()?(parseFloat($("amax").value)||null):null;
+    const res=runForceCheck(series,vmaxLimit,amaxLimit);
+    drawAngleForceChart(x,6,0,w-12,h,series,res);
+    return;
+  }
+  // Fallback zolang L/H nog niet bekend zijn (envelope niet te bepalen):
+  // eenvoudige weergave zoals voorheen.
+  const pad=46; axes(x,w,h,pad);
   const pts=samples.filter(s=>s.N!==""&&!isNaN(s.N)&&!isNaN(s.deg)); if(!pts.length)return;
-  // vaste assen: hoek ANGLE_MIN(links)..ANGLE_MAX(rechts), kracht FORCE_MIN(onder)..FORCE_MAX(boven)
   const X=d=>pad+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*(w-pad-12);
   const Y=nn=>8+(1-(clamp(nn,FORCE_MIN,FORCE_MAX)-FORCE_MIN)/(FORCE_MAX-FORCE_MIN))*(h-30);
   x.strokeStyle=getCol('--cyan'); x.lineWidth=1.4; x.globalAlpha=.55; x.beginPath();
