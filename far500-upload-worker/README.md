@@ -2,7 +2,7 @@
 
 Cloudflare Worker die de "Naar GitHub"-knoppen in `FAR-500.html` bedient:
 neemt het geüploade .xlsx-bestand aan en zet het door naar een Release-asset
-(tag `recordings`) op `DynteqBV/far-500`. Bestaat omdat een directe
+(tag `recordings`) op `dynteq/far-500`. Bestaat omdat een directe
 browser-upload naar GitHub niet kan (zie README.md in de projectroot).
 
 Sinds 2026-08-11 ook de omgekeerde richting: `GET /download?name=<asset>`
@@ -23,7 +23,7 @@ cd far500-upload-worker
 npx wrangler login
 npx wrangler secret put GH_TOKEN
 ```
-Plak hier een fine-grained GitHub PAT, alleen scope `DynteqBV/far-500`,
+Plak hier een fine-grained GitHub PAT, alleen scope `dynteq/far-500`,
 permissie **Contents: Read and write**.
 
 ```
@@ -50,7 +50,7 @@ curl -X POST https://far500-upload-worker.<jouw-subdomain>.workers.dev \
   --data-binary "@test.xlsx"
 ```
 Verwacht een JSON-antwoord `{"ok":true,"url":"..."}` en een nieuwe asset onder
-[Releases](https://github.com/DynteqBV/far-500/releases/tag/recordings).
+[Releases](https://github.com/dynteq/far-500/releases/tag/recordings).
 
 Download-proxy testen:
 ```

@@ -10,7 +10,7 @@ De laptop-UI (`FAR-500.html`) is een losstaande webpagina die via
 [Web Bluetooth](https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API)
 rechtstreeks met het device verbindt — geen server, geen installatie.
 
-**Live:** https://dynteqbv.github.io/far-500/ (GitHub Pages)
+**Live:** https://dynteq.github.io/far-500/ (GitHub Pages)
 
 Web Bluetooth vereist een secure context (https) en wordt alleen ondersteund
 door Chromium-browsers (Chrome, Edge) — niet door Firefox of Safari.
@@ -23,7 +23,7 @@ als er alleen een mobiel (Bluefy) beschikbaar is. Het bestand komt terecht
 als **Release-asset** onder de tag `recordings` — bewust geen git-commit,
 zodat een asset ook echt weg is zodra je 'm verwijdert.
 
-**Locatie:** https://github.com/DynteqBV/far-500/releases/tag/recordings
+**Locatie:** https://github.com/dynteq/far-500/releases/tag/recordings
 
 Dit is **tijdelijke opslag** op een publieke repo: haal een bestand na het
 downloaden op je computer altijd weer weg uit de release. Er wordt niets

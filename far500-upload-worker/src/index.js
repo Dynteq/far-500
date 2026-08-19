@@ -16,7 +16,7 @@
 // reeds-publieke assets uit deze ene release (geen vrije URL-doorgifte), dus
 // er lekt niets dat niet al via de GitHub-UI/API voor iedereen zichtbaar is.
 
-const OWNER = "DynteqBV";
+const OWNER = "dynteq";
 const REPO = "far-500";
 const TAG = "recordings";
 
