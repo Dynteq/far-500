@@ -47,6 +47,53 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (vervolg 3: Meting-kaart knippert, upload-wachtwoord
+  "tijn", verplichte velden vóór rapportage, grafiek-verfijningen, alles op
+  verzoek, alles in `FAR-500.html`):
+  - **"Meting"-kaart** (Naam/Notities) knippert nu ook (dikke oranje rand,
+    zelfde `blinkOrangeCard`-mechaniek als Handvat-posities) zolang niet
+    BEIDE velden gevuld zijn. Placeholders aangepast naar "bv. Falco /
+    Premium" resp. "bv. hoog / AzorTerschelling 28kg". Handvat HOOG/LAAG
+    hebben nu standaard 160cm/20cm ingevuld.
+  - **Upload-wachtwoord naar GitHub is "tijn"** -- dit is ook **live gezet**
+    op de Cloudflare Worker (`wrangler secret put UPLOAD_SECRET`, bevestigd
+    met een test-upload + daarna dat test-asset weer verwijderd van de
+    release); het invulveld heeft "tijn" als standaardwaarde.
+  - **"Download CSV" nu ook adv-only** (was al zo voor "Meetgegevens
+    XLSX") -- in Standard mode is er dus geen losse ruwe-data-download meer,
+    alleen de PDF-rapportknop. De banner-tekst "voer L in (of leg posities
+    vast) voor beoordeling" is vervangen door het neutrale "nog geen
+    meting" (de knipperende Handvat-posities-velden maken dat al duidelijk).
+  - **Verplichte velden vóór rapportage** (`reportPrereqsOk()`): Naam,
+    Notities, Handvat HOOG/LAAG (cm) moeten gevuld zijn ÉN beide posities
+    moeten daadwerkelijk vastgelegd zijn (`geo.angHigh`/`angLow`, niet
+    alleen de hoogte ingevuld) -- anders popup "Niet alle gegevens zijn
+    ingevuld." en geen rapport/upload. Geldt voor beide rapport-knoppen
+    (XLSX + PDF). Upload-code + de rapport-knoppen (incl. "Upload naar
+    GitHub") staan nu ook onderaan het knoppenblok, na alle invulvelden.
+  - **Oranje breakaway-kader (omlaag) in 2 delen bevestigd**: de achtergrond
+    wordt al per hoek-kolom op basis van de hoogte op dát punt berekend
+    (F_LOW/F_HIGH), dus als het 20cm-venster de 135cm-grens kruist verspringt
+    het kader vanzelf tussen de twee marges (210N resp. 127,5N) -- geen
+    codewijziging nodig geweest, met een gerichte test bevestigd (2
+    verschillende bandhoogtes bij een venster dat de grens kruist).
+  - **Krachtraster** toegevoegd aan `drawAngleForceChart()`: dunne
+    horizontale lijnen + labels bij ±85/±100/±140/±210N (live én PDF, gedeelde
+    routine).
+  - **Afstand-tickmarks (0/10/20cm) gesplitst**: omhoog-tickmarks nu
+    bovenaan de grafiek, omlaag-tickmarks blijven vlak boven de onderste
+    (hoek-)as. `TOPAX`-factor (in `drawAngleForceChart()`) van 2.3→3.0 om
+    ruimte te maken voor de extra rij; `CHART_H` in
+    `buildAnalyseReportCanvas()` daarop afgestemd.
+  - "Omhoog"/"omlaag"-labels op de meetlijn nu bij -35° resp. -15° (was
+    -30°/-15°), op verzoek zodat ze altijd op de bovenste resp. onderste
+    curve vallen.
+  - **Getest**: `node --check`, en jsdom-smoketests per onderdeel (default-
+    waarden, knop-/veld-volgorde, popup + géén rapport/upload bij
+    ontbrekende gegevens vs. wél rapport+upload bij complete gegevens, het
+    2-delige oranje kader, en de boven/onder-tickplaatsing). Live bevestigd
+    dat het nieuwe GitHub-wachtwoord werkt. **Niet visueel gecontroleerd**
+    in een echte browser (geen browser-tooling in dit environment).
 - **2026-08-19** (vervolg: L-werkelijk-tekenfix, PDF-opmaak 2-pagina's,
   C4-override-knop, en een forse Standard-mode-vereenvoudiging, alles op
   verzoek, alles in `FAR-500.html`):

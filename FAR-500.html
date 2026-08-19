@@ -82,6 +82,9 @@
   #yHighField, #yLowField{border:3px solid transparent;border-radius:8px;padding:4px 6px;margin:-4px -6px 8px -6px}
   #yHighField.needs-capture, #yLowField.needs-capture{animation:blinkOrangeBorder 2s steps(1,end) infinite}
   @keyframes blinkOrangeBorder{0%,49%{border-color:var(--orange)}50%,100%{border-color:transparent}}
+  #metingCard.needs-fill{border-width:3px}
+  #metingCard.needs-fill{animation:blinkOrangeCard 2s steps(1,end) infinite}
+  @keyframes blinkOrangeCard{0%,49%{border-color:var(--orange)}50%,100%{border-color:var(--line)}}
   .buildstamp{position:fixed;right:8px;bottom:6px;z-index:80;font-family:var(--mono);font-size:10px;
               color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:5px;
               padding:2px 7px;opacity:.85;pointer-events:none}
@@ -145,23 +148,25 @@
         <input id="amaxOverride" class="num" type="number" step="1" title="Max versnelling (cm/s²)">
         <button id="btnC4Override" title="Overschrijft de snelheid/versnelling-limiet (kaart 'Limieten &amp; live') vóórdat het rapport gegenereerd wordt">Overschrijven</button>
       </div>
+      <button id="btnCsv" class="adv-only" disabled>Download CSV</button>
+      <button id="btnDump" class="adv-only" disabled>Device-log</button>
+      <!-- Upload-code + rapport-knoppen bewust onderaan: eerst Naam/Notities
+           en Handvat-posities invullen/vastleggen, dan pas rapporteren. -->
       <div class="field wide" id="ghSecretField">
-        <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code">
+        <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code" value="tijn">
       </div>
       <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
       <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
       <button id="btnReportPdf" class="wide" disabled title="Vereist L en H (Handvat-posities → geometrie); wordt ook naar GitHub geüpload">Maak rapportage + Analyse PDF</button>
       <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
-      <button id="btnCsv" disabled>Download CSV</button>
-      <button id="btnDump" class="adv-only" disabled>Device-log</button>
     </div>
     <div class="hint" id="ghStatus"></div>
     <div class="hint" id="dlFallback"></div>
 
-    <div class="card">
+    <div class="card" id="metingCard">
       <h3>Meting</h3>
-      <div class="field"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Dubbeldek-rek / type_A"></div>
-      <div class="field"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. laag, 200 N"></div>
+      <div class="field" id="naamField"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Falco / Premium"></div>
+      <div class="field" id="notitiesField"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. hoog / AzorTerschelling 28kg"></div>
     </div>
 
     <div class="card adv-only">
@@ -193,12 +198,12 @@
       <div class="hint" style="margin-bottom:10px">Plaats de goot <b>omhoog</b>, meet de handvat-hoogte, vul die in en klik op "Huidige positie vastleggen". Herhaal daarna voor de positie <b>laag</b>.</div>
       <div class="field" id="yHighField">
         <label>Handvat HOOG (cm)</label>
-        <input id="yHigh" class="num" type="number" step="0.1" placeholder="hoogte">
+        <input id="yHigh" class="num" type="number" step="0.1" placeholder="hoogte" value="160">
         <button id="capHigh">Huidige positie vastleggen</button><span class="cap" id="angHigh">—</span>
       </div>
       <div class="field" id="yLowField">
         <label>Handvat LAAG (cm)</label>
-        <input id="yLow" class="num" type="number" step="0.1" placeholder="hoogte">
+        <input id="yLow" class="num" type="number" step="0.1" placeholder="hoogte" value="20">
         <button id="capLow">Huidige positie vastleggen</button><span class="cap" id="angLow">—</span>
       </div>
       <div class="adv-only">
@@ -274,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 15:07</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 15:37</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -504,6 +509,13 @@ function updateCaptureBlink(){
   $("yHighField").classList.toggle("needs-capture", geo.angHigh==null);
   $("yLowField").classList.toggle("needs-capture", geo.angLow==null);
 }
+// Zelfde soort knipperende rand, nu om de hele "Meting"-kaart: knippert
+// zolang niet BEIDE velden (Naam en Notities) ingevuld zijn.
+function updateMetingBlink(){
+  const filled=$("naam").value.trim()!==""&&$("notities").value.trim()!=="";
+  $("metingCard").classList.toggle("needs-fill", !filled);
+}
+["naam","notities"].forEach(id=>$(id).addEventListener("input", updateMetingBlink));
 
 /* ---------------- data ---------------- */
 let lastDevLogging=null;
@@ -831,7 +843,7 @@ function updateReportButtons(){
 }
 function setBanner(){
   const el=$("resultBanner"); el.className="banner";
-  if(!haveL()){ el.textContent="voer L in (of leg posities vast) voor beoordeling"; return; }
+  if(!haveL()){ el.textContent="nog geen meting"; return; }
   if(samples.length<3){ el.textContent="wacht op meetdata…"; return; }
   // In Standard mode is de snelheid/versnelling-controle (C4) nergens
   // anders zichtbaar (kaart "Limieten & live" en de snelheidslijn in de
@@ -1009,7 +1021,11 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // leesbaar te zijn). Default (15px) is voor de live weergave; het rapport
   // geeft een grotere waarde door (zie buildAnalyseReportCanvas()).
   const AF=axisFontPx||15;
-  const TOPAX=Math.round(AF*2.3), BOTAX=Math.round(AF*5);
+  const AFtick=Math.round(AF*0.85);
+  // TOPAX groter dan voorheen: bovenaan staan nu zowel de 135/170cm-
+  // hoogtelabels als de omhoog-afstandtickmarks (2 rijen, zie verderop) --
+  // buildAnalyseReportCanvas() gebruikt dezelfde *3.0-factor voor CHART_H.
+  const TOPAX=Math.round(AF*3.0), BOTAX=Math.round(AF*5);
   const py=y+TOPAX, ph=h-TOPAX-BOTAX;
   const n=series.t_s.length;
   const X=d=>x+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*w;
@@ -1029,29 +1045,41 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     upMove=res.moves.find(m=>m.direction==="up")||null;
     downMove=res.moves.find(m=>m.direction==="down")||null;
   }
-  // Breakaway-marge (150%) kader: 0-20cm cirkelbaanlengte vanaf de START van
-  // de beweging (arcStart op de arc_cm-as -- dezelfde referentie als de
-  // afstand-tickmarks verderop, bewust niet het engine-anker). Bij OMHOOG is
-  // de kracht altijd positief (trekkracht): het kader zit daarom uitsluitend
-  // boven +base, nooit gespiegeld naar negatief. Bij OMLAAG kan de kracht
-  // positief (lege goot) of negatief (beladen goot) zijn -- welke kant van
-  // het kader getekend wordt volgt uit het teken van de gemiddelde kracht in
-  // diezelfde eerste 20cm van die beweging.
-  function graceWindowDeg(move,sign){
-    if(!move||L==null) return null;
-    const arcA=move.arcStart, arcB=move.arcStart+sign*CRIT.GRACE_ARC;
+  // Breakaway-marge (150%) kader: alleen tekenen als de kracht ergens in de
+  // beweging minstens 50% van de bedienkracht (regio-afhankelijke basis
+  // F_LOW/F_HIGH) haalt -- geen breakaway-piek, dan ook geen marge-kader.
+  // Het kader begint dan (0cm) precies bij dat 50%-kruispunt, niet eerder,
+  // en loopt van daaruit 20cm cirkelbaanlengte door (CRIT.GRACE_ARC). Bij
+  // OMHOOG is de kracht altijd positief (trekkracht): het kader zit daarom
+  // uitsluitend boven +base, nooit gespiegeld naar negatief. Bij OMLAAG kan
+  // de kracht positief (lege goot) of negatief (beladen goot) zijn -- welke
+  // kant van het kader getekend wordt volgt uit het teken van de gemiddelde
+  // kracht in dat 20cm-venster.
+  function findHalfCrossArc(move){
+    for(let i=move.start;i<=move.end;i++){
+      const height=series.handle_height_cm[i];
+      const base=height<CRIT.H_THRESH?CRIT.F_LOW:CRIT.F_HIGH;
+      if(Math.abs(series.force_N[i])>=0.5*base) return series.arc_cm[i];
+    }
+    return null;
+  }
+  function graceWindowDeg(anchorArc,sign){
+    if(anchorArc==null||L==null) return null;
+    const arcA=anchorArc, arcB=anchorArc+sign*CRIT.GRACE_ARC;
     const thA=th0-arcA/L, thB=th0-arcB/L;
     return {lo:Math.min(thA,thB)/D2R, hi:Math.max(thA,thB)/D2R};
   }
-  function graceForceSign(move){
+  function graceForceSign(move,anchorArc){
     let sum=0;
     for(let i=move.start;i<=move.end;i++){
-      if(Math.abs(series.arc_cm[i]-move.arcStart)<=CRIT.GRACE_ARC) sum+=series.force_N[i];
+      if(Math.abs(series.arc_cm[i]-anchorArc)<=CRIT.GRACE_ARC) sum+=series.force_N[i];
     }
     return sum<0?-1:1;
   }
-  const upWin=upMove?Object.assign({sign:1},graceWindowDeg(upMove,1)):null;
-  const downWin=downMove?Object.assign({sign:graceForceSign(downMove)},graceWindowDeg(downMove,-1)):null;
+  const upCross=upMove?findHalfCrossArc(upMove):null;
+  const downCross=downMove?findHalfCrossArc(downMove):null;
+  const upWin=(upMove&&upCross!=null)?Object.assign({sign:1},graceWindowDeg(upCross,1)):null;
+  const downWin=(downMove&&downCross!=null)?Object.assign({sign:graceForceSign(downMove,downCross)},graceWindowDeg(downCross,-1)):null;
   const graceSignAt=deg=>{
     if(upWin&&upWin.lo!=null&&deg>=upWin.lo-1e-9&&deg<=upWin.hi+1e-9) return upWin.sign;
     if(downWin&&downWin.lo!=null&&deg>=downWin.lo-1e-9&&deg<=downWin.hi+1e-9) return downWin.sign;
@@ -1082,6 +1110,19 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     }
   }
 
+  // ---- krachtraster: dunne horizontale lijnen + labels bij ±85/±100/±140/
+  // ±210N (op verzoek, referentiewaarden voor de norm/breakaway-marge) ----
+  ctx.textAlign="left"; ctx.font=AFtick+"px sans-serif";
+  [85,100,140,210].forEach(fN=>{
+    [fN,-fN].forEach(v=>{
+      const py2=Y(v);
+      ctx.strokeStyle="rgba(0,0,0,0.25)"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x,py2); ctx.lineTo(x+w,py2); ctx.stroke();
+      ctx.fillStyle="#555";
+      ctx.fillText((v>0?"+":"")+v+" N", x+6, py2-3);
+    });
+  });
+
   // ---- hoek-as onderaan: elke 5 graden een dun streepje over de volle
   // grafiekhoogte + label ----
   ctx.textAlign="center"; ctx.font=AF+"px sans-serif";
@@ -1100,16 +1141,17 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     ctx.strokeStyle="#444"; ctx.lineWidth=2.6;
     ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+ph); ctx.stroke();
     ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
-    ctx.fillText(label, px, py-Math.round(AF*0.67));
+    ctx.fillText(label, px, py-Math.round(AF*1.1));
     ctx.font=AF+"px sans-serif";
   });
 
-  // ---- afgelegde afstand op de cirkelbaan onderaan: korte streepjes op
-  // 0/10/20 cm vanaf de start van de omhoog- resp. omlaaggaande beweging
-  // (elk vanaf zijn eigen startpunt, dus twee onafhankelijke 0-punten) ----
-  const AFtick=Math.round(AF*0.85);
+  // ---- afgelegde afstand op de cirkelbaan: korte streepjes op 0/10/20 cm
+  // vanaf de start van de omhoog- resp. omlaaggaande beweging (elk vanaf
+  // zijn eigen startpunt, dus twee onafhankelijke 0-punten). Op verzoek: de
+  // omhoog-tickmarks staan BOVENAAN de grafiek (bij de top-as), de omlaag-
+  // tickmarks blijven vlak BOVEN de onderste (hoek-)as. ----
   if(L!=null && (upMove || downMove)){
-    const drawArcTicks=(move,sign,arrow)=>{
+    const drawArcTicks=(move,sign,arrow,atTop)=>{
       if(!move) return;
       [0,10,20].forEach(d=>{
         const arc=move.arcStart+sign*d;
@@ -1117,13 +1159,18 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
         if(deg<ANGLE_MIN||deg>ANGLE_MAX) return;
         const px=X(deg);
         ctx.strokeStyle="#1e9e6a"; ctx.lineWidth=1.6;
-        ctx.beginPath(); ctx.moveTo(px,py+ph-10); ctx.lineTo(px,py+ph+4); ctx.stroke();
         ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif";
-        ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py+ph+Math.round(AF*2.8));
+        if(atTop){
+          ctx.beginPath(); ctx.moveTo(px,py-4); ctx.lineTo(px,py+10); ctx.stroke();
+          ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py-Math.round(AF*0.25));
+        } else {
+          ctx.beginPath(); ctx.moveTo(px,py+ph-10); ctx.lineTo(px,py+ph+4); ctx.stroke();
+          ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py+ph+Math.round(AF*2.8));
+        }
       });
     };
-    drawArcTicks(upMove,1,"↑");
-    drawArcTicks(downMove,-1,"↓");
+    drawArcTicks(upMove,1,"↑",true);
+    drawArcTicks(downMove,-1,"↓",false);
   }
   ctx.textAlign="left";
 
@@ -1167,8 +1214,8 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     ctx.textAlign="center"; ctx.font="bold "+(AF+1)+"px sans-serif";
     ctx.fillText(txt, px, above?py2-Math.round(AF*1.47):py2+Math.round(AF*2));
   }
-  labelOnMove(upMove,-30,"omhoog");
-  labelOnMove(downMove,-15,"omlaag");
+  labelOnMove(upMove,-35,"omhoog");    // omhoog = altijd positieve trekkracht -> de bovenste curve
+  labelOnMove(downMove,-15,"omlaag");  // omlaag = kost altijd minder trekkracht dan omhoog -> de onderste curve
   ctx.textAlign="left";
 
   // ---- kader + assen-labels ----
@@ -1208,7 +1255,7 @@ function buildAnalyseReportCanvas(){
   // CHART_H moet daarop worden afgestemd om de gevraagde 780px plot-hoogte
   // (30% boven de al 1.5x'e 600px) te behouden.
   const CHART_AXIS_FONT=38;
-  const CHART_H=780+Math.round(CHART_AXIS_FONT*2.3)+Math.round(CHART_AXIS_FONT*5);
+  const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*5);
   const H = PAD + 75 + 75 + 65 + 65 + 50
     + 60 + 7*lineH + 40
     + 60 + critLines.length*lineH + 40
@@ -1364,7 +1411,20 @@ async function buildAnalyseReportAssets(){
   const jpegBytes=await canvasToJpegBytes(canvas,0.9);
   return {canvas, series, res, chartTop, jpegBytes};
 }
+// Vóór het genereren van een rapport moeten de vier tekstvelden (Naam,
+// Notities, Handvat HOOG/LAAG cm) gevuld zijn ÉN moeten beide posities
+// daadwerkelijk vastgelegd zijn (geo.angHigh/angLow) -- alleen een ingevulde
+// hoogte zonder vastgelegde hoek is niet genoeg. Bij een ontbrekend item:
+// duidelijke popup, en er wordt bewust geen rapport gebouwd/geüpload.
+function reportPrereqsOk(){
+  const ok=$("naam").value.trim()!==""&&$("notities").value.trim()!==""&&
+    $("yHigh").value.trim()!==""&&$("yLow").value.trim()!==""&&
+    geo.angHigh!=null&&geo.angLow!=null;
+  if(!ok) alert("Niet alle gegevens zijn ingevuld.");
+  return ok;
+}
 $("btnReportXlsx").onclick=async()=>{
+  if(!reportPrereqsOk()) return;
   const btn=$("btnReportXlsx"); btn.disabled=true;
   try{
     const {canvas, series, res, jpegBytes}=await buildAnalyseReportAssets();
@@ -1375,6 +1435,7 @@ $("btnReportXlsx").onclick=async()=>{
   finally{ updateReportButtons(); }
 };
 $("btnReportPdf").onclick=async()=>{
+  if(!reportPrereqsOk()) return;
   const btn=$("btnReportPdf"); btn.disabled=true;
   try{
     const {canvas, chartTop, jpegBytes}=await buildAnalyseReportAssets();
@@ -1656,6 +1717,7 @@ function drawXY(){
 }
 redraw();
 updateCaptureBlink();
+updateMetingBlink();
 (function(){ const tb=document.getElementById("themeToggle");
   function apply(light){ document.body.classList.toggle("light",light);
     tb.textContent = light ? "\u263e" : "\u2600";
