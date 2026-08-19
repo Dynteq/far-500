@@ -47,6 +47,63 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (bugfix handle_height_cm + snelheid/versnelling-smoothing,
+  op verzoek na een gemelde fout), alles in `FAR-500.html`:
+  - **Probleem**: in een echte meting (Falco Premium, hoek hoog ≈ -0.7°, hoek
+    laag ≈ -47.9°) werd `handle_height_cm` bij -49,2° berekend als 305,6cm
+    i.p.v. ~16cm, en daalde de hoogte juist ri.p.v. te stijgen naarmate de
+    hoek richting 0° ging.
+  - **Root cause**: `computeGeo()`/`Lused()` eisten `L>0`. Wiskundig is L de
+    unieke oplossing van `yHigh=H-L·sin(angHigh)` / `yLow=H-L·sin(angLow)` —
+    er is geen vrije tekenkeuze. Onder de hoek-conventie sinds de 2026-08-06
+    teken-omdraai komt L bij een fysiek correcte meting regelmatig negatief
+    uit (hoogte stijgt dan met de hoek i.p.v. te dalen, zoals hier). De
+    `>0`-eis verwierp zo'n geldige geometrie als "ongeldig", of liet (via
+    `btnOldMeasLoad`, dat L/H rechtstreeks uit de "L/H berekend"-metadata van
+    een geladen oud bestand overnam i.p.v. herberekende) een **verouderde,
+    inconsistente L** van een eerder geladen bestand staan zodra de hoeken
+    daarna wél klopten — dat laatste is precies hoe het gemelde bestand
+    (`20260819_131101_Falco_Premium.xlsx`) ontstond.
+  - **Fix (3 plekken)**: `computeGeo()`/`Lused()` accepteren nu ook negatieve
+    L (alleen 0/NaN/null is ongeldig); `btnOldMeasLoad` herberekent L/H nu
+    altijd vers via `computeGeo()` i.p.v. de opgeslagen "L/H berekend" te
+    vertrouwen.
+  - **Snelheid/versnelling gladgestreken** (op verzoek, "grillig door ruis op
+    de hoek"): nieuwe `smooth4()` — trailing 4-punts voortschrijdend
+    gemiddelde, toegepast op `A.spd` ná `derivAt()` en op `A.acc` (die zelf
+    weer van de gladgestreken snelheid afgeleid wordt, profiteert dus
+    automatisch mee). Trailing i.p.v. gecentreerd zodat het ook tijdens een
+    live meting werkt (geen toekomstige samples nodig).
+  - **Bestaande .xlsx-bestanden nagerekend** (jsdom, de echte
+    `parseFarMetingWorkbook()`/`computeGeo()`/`analyze()` uit dit bestand
+    gebruikt, geen herimplementatie in Python): van de 9 bestanden onder de
+    GitHub-`recordings`-release had **geen enkel** al een foute
+    `handle_height_cm`-kolom — 4 hadden al correcte data (fysiek juiste,
+    stijgende hoogte), 3 hadden geen hoek vastgelegd (geen kolom om fout te
+    hebben), en 2 hadden wél een hoek maar géén berekende kolommen (de oude
+    `>0`-eis verwierp die toen al). Bij diezelfde 6-met-hoek bestanden toont
+    het tekstveld "L berekend" wel het verkeerde teken (H blijft toevallig
+    vrijwel gelijk omdat sin(hoek hoog) ~0 is) — puur cosmetisch, wordt door
+    de app nooit gebruikt (zie de `btnOldMeasLoad`-fix hierboven) dus
+    bewust ongewijzigd gelaten op de GitHub-release (nog niet gevraagd om
+    dat ook te corrigeren). De twee **lokale** (nog niet geüploade)
+    `Falco_Premium`-bestanden van vandaag (11:41 en 13:11) waren wél echt
+    fout door de hierboven beschreven `btnOldMeasLoad`-bug: een
+    gecorrigeerde kopie van de 13:11-meting staat als
+    `Downloads\20260819_131101_Falco_Premium_fixed.xlsx` (origineel
+    ongewijzigd gelaten, stond open in Excel); de 11:41-meting is niet te
+    herstellen (hoek hoog en hoek laag zijn daarin toevallig identiek
+    vastgelegd, dus geometrisch onoplosbaar -- opnieuw meten nodig).
+  - **Getest**: `node --check`, en een headless jsdom-run die (1) met de
+    exacte Falco Premium-cijfers bevestigt dat `computeGeo()` nu L≈-191.84
+    geeft (i.p.v. "ongeldig"), (2) dat `handle_height_cm` bij -49,2°/0° nu
+    ~15,1cm/~160,3cm is en monotoon stijgt, (3) dat `smooth4()` het juiste
+    4-punts voortschrijdend gemiddelde geeft, (4) dat het laden van een
+    bewust "stale" (inconsistente) oud bestand nu L/H wél vers herberekent
+    i.p.v. de oude waarde te laten staan. **Nog niet gevraagd/gedaan**: de
+    kracht-vs-hoek-grafiek in het rapport optimaliseren (op verzoek eerst
+    deze rekenfout oplossen) — dat staat nog open, zie eerdere sessie
+    hierboven voor de huidige stand van die grafiek.
 - **2026-08-19** (handmatige hoek-invoer + GitHub-links/PDF-dropdown +
   norm-achtergrond in de rapport-grafiek, op verzoek), alles in `FAR-500.html`:
   - **Probleem dat is opgelost**: een oude meting laden vanaf GitHub kan een

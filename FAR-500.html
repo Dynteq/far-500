@@ -262,7 +262,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 12:55</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 13:54</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -290,7 +290,13 @@ const tsC=$("tsCanvas"), xyC=$("xyCanvas");
 let geo={yHigh:null,angHigh:null,yLow:null,angLow:null,L:null,H:null,Lman:null,Hman:null,valid:false};
 let A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false};
 
-function Lused(){ return (geo.Lman!=null&&geo.Lman>0)?geo.Lman:((geo.L!=null&&geo.L>0)?geo.L:null); }
+// L mag negatief zijn -- de hoek-teken-conventie (sinds 2026-08-06) kan een
+// fysiek prima geometrie een negatieve L opleveren (hoogte stijgt dan met de
+// hoek i.p.v. te dalen); alleen 0/NaN/null zijn ongeldig. Vóór deze fix eiste
+// dit een positieve L, wat zulke (correcte) geometrieën afkeurde tot
+// "ongeldig" of, erger, deed sluipen dat een verouderde/inconsistente L uit
+// een geladen oud bestand bleef hangen (zie btnOldMeasLoad).
+function Lused(){ return (geo.Lman!=null&&geo.Lman!==0&&isFinite(geo.Lman))?geo.Lman:((geo.L!=null&&geo.L!==0&&isFinite(geo.L))?geo.L:null); }
 function Hused(){ return (geo.Hman!=null&&isFinite(geo.Hman))?geo.Hman:((geo.H!=null&&isFinite(geo.H))?geo.H:null); }
 const haveL =()=>Lused()!=null;
 const haveHL=()=>haveL()&&Hused()!=null;
@@ -438,8 +444,14 @@ function computeGeo(){
   geo.valid=false;
   if(geo.yHigh!=null && geo.yLow!=null){
     const sH=Math.sin(geo.angHigh*D2R), sL=Math.sin(geo.angLow*D2R), den=sL-sH;
+    // L>0 is GEEN vereiste: L,H liggen wiskundig al vast als de unieke
+    // oplossing van yHigh=H-L*sin(angHigh) en yLow=H-L*sin(angLow) -- er is
+    // geen vrije tekenkeuze. Onder de huidige hoek-conventie (sinds
+    // 2026-08-06) komt L bij een fysiek correcte meting vaak juist negatief
+    // uit (handvathoogte stijgt dan met de hoek i.p.v. te dalen). Alleen
+    // 0/NaN is echt ongeldig (geen oplossing).
     if(Math.abs(den)>1e-4){ geo.L=(geo.yHigh-geo.yLow)/den; geo.H=geo.yHigh+geo.L*sH;
-      if(isFinite(geo.L)&&isFinite(geo.H)&&geo.L>0){ geo.valid=true;
+      if(isFinite(geo.L)&&isFinite(geo.H)&&geo.L!==0){ geo.valid=true;
         $("valL").textContent=geo.L.toFixed(1)+" cm"; $("valH").textContent=geo.H.toFixed(1)+" cm"; } }
     if(!geo.valid){ $("valL").textContent="ongeldig"; $("valH").textContent="—"; }
   }
@@ -695,18 +707,24 @@ $("btnOldMeasLoad").onclick=async()=>{
 
     geo.yHigh=metaNum(meta,"Handvat hoog (cm)",1); geo.angHigh=metaNum(meta,"Handvat hoog (cm)",3);
     geo.yLow=metaNum(meta,"Handvat laag (cm)",1); geo.angLow=metaNum(meta,"Handvat laag (cm)",3);
-    geo.Lman=metaNum(meta,"L ingevoerd (cm)",1); geo.L=metaNum(meta,"L berekend (cm)",1);
-    geo.Hman=metaNum(meta,"H ingevoerd (cm)",1); geo.H=metaNum(meta,"H berekend (cm)",1);
-    geo.valid=geo.L!=null&&geo.H!=null;
+    geo.Lman=metaNum(meta,"L ingevoerd (cm)",1);
+    geo.Hman=metaNum(meta,"H ingevoerd (cm)",1);
     $("yHigh").value=geo.yHigh!=null?geo.yHigh:""; $("angHigh").textContent=geo.angHigh!=null?geo.angHigh.toFixed(1)+"°":"—";
     $("yLow").value=geo.yLow!=null?geo.yLow:""; $("angLow").textContent=geo.angLow!=null?geo.angLow.toFixed(1)+"°":"—";
     $("Hman").value=geo.Hman!=null?geo.Hman:""; $("Lman").value=geo.Lman!=null?geo.Lman:"";
-    $("valL").textContent=geo.L!=null?geo.L.toFixed(1)+" cm":"—"; $("valH").textContent=geo.H!=null?geo.H.toFixed(1)+" cm":"—";
+    // L/H altijd vers herberekenen uit de hoeken (computeGeo()) i.p.v. de
+    // opgeslagen "L/H berekend"-metadata te vertrouwen -- die kan verouderd/
+    // inconsistent zijn t.o.v. de eveneens geladen angHigh/angLow (bv. een
+    // bestand van vóór de hoek-teken-omdraai van 2026-08-06, of een van de
+    // eenmalige hoek-flip-migratie van 2026-08-11 die bewust alleen de hoeken
+    // flipte en L/H ongewijzigd liet -- zie CLAUDE.md). computeGeo() roept
+    // ook analyze()+redraw() aan.
+    geo.L=null; geo.H=null; geo.valid=false;
+    computeGeo();
 
     $("nSamples").textContent=samples.length; $("lastT").textContent=(samples[samples.length-1].t/1000).toFixed(2);
     $("btnCsv").disabled=false; $("btnXlsx").disabled=false; $("btnXlsxGh").disabled=false;
-    analyze(); redraw();
-    status.textContent="geladen: "+name+" ("+samples.length+" samples)"+(haveHL()?" — klaar voor Rapportage + Analyse.":" — vul evt. L/H aan voor de bedienkracht-analyse.");
+    status.textContent="geladen: "+name+" ("+samples.length+" samples)"+(haveHL()?" — klaar voor Rapportage + Analyse.":" — vul evt. de hoek(en) aan (of gebruik \"Overschrijf posities\") voor de bedienkracht-analyse.");
   }catch(e){ status.textContent="laden mislukt: "+e.message; }
   finally{ btn.disabled=!$("oldMeasSelect").value; }
 };
@@ -714,6 +732,15 @@ $("btnOldMeasLoad").onclick=async()=>{
 /* ---------------- analyse ---------------- */
 function resetAnalysis(){ A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false}; setBanner(); updateReportButtons(); }
 function derivAt(i,arr,ts){ let j=i-1; while(j>0&&ts[i]-ts[j]<WIN)j--; if(j<0||ts[i]===ts[j])return 0; return (arr[i]-arr[j])/(ts[i]-ts[j]); }
+// Trailing 4-punts voortschrijdend gemiddelde -- differentiëren van een hoek
+// met sensorruis versterkt die ruis, waardoor snelheid/versnelling grillig
+// oogden. Trailing (i.p.v. gecentreerd) zodat dit ook tijdens een live meting
+// werkt (geen toekomstige samples nodig). Op verzoek toegepast op snelheid
+// (en, omdat versnelling = afgeleide van diezelfde snelheid, profiteert die
+// automatisch mee).
+function smooth4(arr){ const out=new Array(arr.length);
+  for(let i=0;i<arr.length;i++){ let s=0,c=0; for(let k=Math.max(0,i-3);k<=i;k++){ s+=arr[k]; c++; } out[i]=s/c; }
+  return out; }
 
 function analyze(){
   const n=samples.length; A.ts=samples.map(s=>s.t/1000);
@@ -727,7 +754,9 @@ function analyze(){
       A.ht[i]=(Hh!=null)?(Hh-L*Math.sin(th)):NaN;            // handvathoogte tov grond
     }
     for(let i=0;i<n;i++) A.spd[i]=derivAt(i,A.arc,A.ts);
+    A.spd=smooth4(A.spd);
     for(let i=0;i<n;i++) A.acc[i]=derivAt(i,A.spd,A.ts);
+    A.acc=smooth4(A.acc);
     // hoogste punt = grootste afstand (goot maximaal omhoog)
     let peak=0; for(let i=1;i<n;i++) if(A.arc[i]>A.arc[peak]) peak=i;
     // 20 cm na start opgaande beweging (voor de piek), en 20 cm na de piek (neergaand)
