@@ -47,6 +47,55 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (vervolg 8: opmaakfixes grafiek/PDF + eindoordeel-kader
+  verkleind, op verzoek, alles in `FAR-500.html`):
+  - **Pijltjes weg bij de 0/10/20cm-tickmarks** ("↑"/"↓" achter "0cm" etc.) —
+    stond te onrustig, `drawArcTicks()` tekent nu alleen nog "0cm"/"10cm"/"20cm"
+    (zowel live UI als PDF/XLSX-rapport, gedeelde tekencode).
+  - **Groene onderschriften "afgelegde afstand handvat..." staan nu gecentreerd
+    recht boven/onder hun eigen 3 tickmarks** (op de x-positie van de
+    "10cm"-tick, het midden van de 0-20cm-reeks) i.p.v. vast tegen de
+    rechterrand van de grafiek — was voorheen op een vaste positie los van de
+    ticks zelf.
+  - **Label "handvathoogte" verplaatst naar links van de 135cm-streep**
+    (`px135-Math.round(AF*0.6)`, rechts uitgelijnd) — stond eerst tegen de
+    rechterrand en overlapte daar met het 170cm-label.
+  - **PDF-paginabreuk lekte content door**: bij een breedte-gebonden schaal
+    (dus met "slack" in de hoogte) tekende elke pagina de VOLLEDIGE
+    rapportafbeelding, en zonder een clip-rechthoek liep het deel dat bij de
+    ándere pagina hoort gewoon door tot aan de paginarand — vandaar dat
+    "Criteria" en "hoek (°)" op pagina 1 én (een stukje) op pagina 2
+    verschenen. Fix: `buildAnalysisPdfBlob()` tekent nu per pagina een
+    expliciete PDF-clip (`re W n`) op precies het rijbereik (`rowStart`/
+    `rowEnd`) dat die pagina hoort te tonen, vóór de `cm ... /Im1 Do`.
+  - **Kader "EINDOORDEEL: PASS/FAIL" gehalveerd** (op verzoek, "iets sjieker"):
+    afmetingen/font/tekstoffset allemaal x0.5 (700x53px i.p.v. 1400x105,
+    font 33px i.p.v. 65px); de gereserveerde ruimte ervoor in
+    `TABLE_BLOCK_H`/`buildAnalyseReportCanvas()` is meegekrompen (125→70).
+  - Omdat de tickmark-onderschriften en de "hoek (°)"-as-titel nu allebei
+    lager/hoger moeten staan om niet te overlappen is de gereserveerde
+    hoogte onderaan de grafiek (`BOTAX` in `drawAngleForceChart()`, en de
+    bijpassende `CHART_H`-formule in `buildAnalyseReportCanvas()`) vergroot
+    van `AF*5` naar `AF*6.3`.
+  - **Nog niet gedaan** (aparte, nog niet uitgevoerde vervolgstappen uit
+    hetzelfde verzoek): de "50%-kruising lijkt op 90%"-bug (root cause:
+    `segmentMoves()` werkt op het ongefilterde hoek/positie-signaal `A.arc`,
+    waardoor bij ruis de grootste beweging soms al mid-ramp begint) en een
+    concreet ruisfilter-advies voor de piek-versnelling aan begin/eind van
+    een meting — beide vereisen een keuze die eerst met de gebruiker
+    afgestemd moet worden (verandert kernlogica van de C1-C4-engine), zie ook
+    de eerdere sessie-notitie over `AskUserQuestion` bij zo'n keuze.
+  - **Getest**: `node --check`, en een jsdom-run die de complete
+    `onOverridePositions→analyze()→buildAnalyseReportCanvas()→
+    buildAnalysisPdfBlob()`-pijplijn met synthetische samples (idle→omhoog
+    met geleidelijke krachtopbouw→idle→omlaag→idle) doorloopt en verifieert:
+    geen "cm↑/↓" meer in de tick-labels, de onderschriften staan exact op de
+    x-positie van hun "10cm"-tick, "handvathoogte" staat links van de
+    135cm-labeltekst, het EINDOORDEEL-blok is 700x53px, en **beide**
+    PDF-content-streams bevatten een `re W n`-clip. **Niet visueel
+    gecontroleerd** in een echte browser/PDF-viewer — graag zelf even een PDF
+    genereren en de nieuwe labelposities/paginasplitsing/kader-formaat
+    bekijken.
 - **2026-08-19** (vervolg 7: oranje-kader/tickmarks-nulpunt gelijk getrokken +
   PDF-paginavolgorde definitief, alles op verzoek, alles in `FAR-500.html`):
   - **Oranje kader "iets breder dan 0-20cm" opgehelderd**: geen bug in de

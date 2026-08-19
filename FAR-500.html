@@ -279,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 16:34</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 17:05</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -1035,7 +1035,7 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // TOPAX groter dan voorheen: bovenaan staan nu zowel de 135/170cm-
   // hoogtelabels als de omhoog-afstandtickmarks (2 rijen, zie verderop) --
   // buildAnalyseReportCanvas() gebruikt dezelfde *3.0-factor voor CHART_H.
-  const TOPAX=Math.round(AF*3.0), BOTAX=Math.round(AF*5);
+  const TOPAX=Math.round(AF*3.0), BOTAX=Math.round(AF*6.3);
   const py=y+TOPAX, ph=h-TOPAX-BOTAX;
   const n=series.t_s.length;
   const X=d=>x+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*w;
@@ -1151,19 +1151,25 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   }
 
   // ---- handvathoogte-as bovenaan: dikke streep + label bij 135 en 170 cm,
-  // plus een "handvathoogte"-onderschrift in hetzelfde lettertype ----
+  // plus een "handvathoogte"-onderschrift in hetzelfde lettertype -- het
+  // onderschrift staat links van de 135cm-streep (op verzoek: stond eerst
+  // aan de rechterrand en overlapte daar met het 170cm-label) ----
+  let px135=null;
   [[CRIT.H_THRESH,CRIT.H_THRESH.toFixed(0)+" cm"],[CRIT.H_MAX,CRIT.H_MAX.toFixed(0)+" cm"]].forEach(([htgt,label])=>{
     const deg=degForHeight(htgt);
     if(deg==null||deg<ANGLE_MIN||deg>ANGLE_MAX) return;
     const px=X(deg);
+    if(htgt===CRIT.H_THRESH) px135=px;
     ctx.strokeStyle="#444"; ctx.lineWidth=2.6;
     ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+ph); ctx.stroke();
     ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
     ctx.fillText(label, px, py-Math.round(AF*1.1));
     ctx.font=AF+"px sans-serif";
   });
-  ctx.textAlign="right"; ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
-  ctx.fillText("handvathoogte", x+w-4, py-Math.round(AF*1.1));
+  if(px135!=null){
+    ctx.textAlign="right"; ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
+    ctx.fillText("handvathoogte", px135-Math.round(AF*0.6), py-Math.round(AF*1.1));
+  }
   ctx.textAlign="left";
 
   // ---- afgelegde afstand op de cirkelbaan: korte streepjes op 0/10/20 cm
@@ -1173,29 +1179,35 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // tickmarks staan bovenaan de grafiek, omlaag-tickmarks vlak boven de
   // onderste (hoek-)as, elk met een groen onderschrift. ----
   if(L!=null && (upMove || downMove)){
-    const drawArcTicks=(move,cross,sign,arrow,atTop)=>{
-      if(!move||cross==null) return;
+    // Geeft de px van de middelste (10cm) tick terug, zodat het onderschrift
+    // daar recht boven/onder gecentreerd kan worden i.p.v. op een vaste
+    // positie los van de ticks.
+    const drawArcTicks=(move,cross,sign,atTop)=>{
+      if(!move||cross==null) return null;
+      let midPx=null;
       [0,10,20].forEach(d=>{
         const arc=cross+sign*d;
         const deg=(th0-arc/L)/D2R;
         if(deg<ANGLE_MIN||deg>ANGLE_MAX) return;
         const px=X(deg);
+        if(d===10) midPx=px;
         ctx.strokeStyle="#1e9e6a"; ctx.lineWidth=1.6;
         ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif";
         if(atTop){
           ctx.beginPath(); ctx.moveTo(px,py-4); ctx.lineTo(px,py+10); ctx.stroke();
-          ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py-Math.round(AF*0.25));
+          ctx.fillText(d.toFixed(0)+"cm", px, py-Math.round(AF*0.25));
         } else {
           ctx.beginPath(); ctx.moveTo(px,py+ph-10); ctx.lineTo(px,py+ph+4); ctx.stroke();
-          ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py+ph+Math.round(AF*2.8));
+          ctx.fillText(d.toFixed(0)+"cm", px, py+ph+Math.round(AF*2.8));
         }
       });
+      return midPx;
     };
-    drawArcTicks(upMove,upCross,1,"↑",true);
-    drawArcTicks(downMove,downCross,-1,"↓",false);
-    ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="right";
-    if(upMove&&upCross!=null) ctx.fillText("afgelegde afstand handvat start beweging omhoog →", x+w-4, py-Math.round(AF*0.25));
-    if(downMove&&downCross!=null) ctx.fillText("afgelegde afstand handvat start beweging ← omlaag", x+w-4, py+ph+Math.round(AF*2.8));
+    const upMidPx=drawArcTicks(upMove,upCross,1,true);
+    const downMidPx=drawArcTicks(downMove,downCross,-1,false);
+    ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="center";
+    if(upMidPx!=null) ctx.fillText("afgelegde afstand handvat start beweging omhoog →", upMidPx, py-Math.round(AF*1.8));
+    if(downMidPx!=null) ctx.fillText("afgelegde afstand handvat start beweging ← omlaag", downMidPx, py+ph+Math.round(AF*4.2));
   }
   ctx.textAlign="left";
 
@@ -1247,7 +1259,7 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // ---- kader + assen-labels ----
   ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,py,w,ph);
   ctx.fillStyle="#333"; ctx.font=(AF+1)+"px sans-serif";
-  ctx.fillText("hoek (°)", x+w/2-26, py+ph+Math.round(AF*4.3));
+  ctx.fillText("hoek (°)", x+w/2-26, py+ph+Math.round(AF*5.6));
   ctx.fillText("+"+FORCE_MAX.toFixed(0)+" N", x+4, py+Math.round(AF*1.07));
   ctx.fillText(FORCE_MIN.toFixed(0)+" N", x+4, py+ph-Math.round(AF*0.4));
 }
@@ -1281,7 +1293,7 @@ function buildAnalyseReportCanvas(){
   // CHART_H moet daarop worden afgestemd om de gevraagde 780px plot-hoogte
   // (30% boven de al 1.5x'e 600px) te behouden.
   const CHART_AXIS_FONT=38;
-  const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*5);
+  const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*6.3);
 
   // Op verzoek: de grafiek staat nu volledig op PAGINA 1, direct ná de
   // titel/metadata/setup/Uitkomst-tabel/eindoordeel (geen criteria-tekst
@@ -1291,7 +1303,7 @@ function buildAnalyseReportCanvas(){
   // nooit een grafiek. Metadata (naam/notities/datum) staat compact op 1
   // regel i.p.v. 3 losse regels.
   const TOP_BLOCK_H = 60 + 70 + 75 + 15 + 7*lineH;                 // titel + metadata-regel + "Setup" + 7 rijen
-  const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+125;        // "Uitkomst" + kop + 4 rijen + eindoordeel
+  const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+70;         // "Uitkomst" + kop + 4 rijen + eindoordeel
   const CHART_TITLE_GAP = 50+60+20;                                // ruimte + titelregel vóór de grafiek
   const critBlockH = 40+60 + 15 + critLines.length*lineH;          // "Criteria" + regels (pagina 2)
   const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + CHART_TITLE_GAP + CHART_H + 40 + critBlockH + PAD;
@@ -1336,11 +1348,11 @@ function buildAnalyseReportCanvas(){
     ctx.font="bold 33px sans-serif"; ctx.fillText(ok?"PASS":"FAIL",PAD+225,y);
     ctx.font="31px sans-serif"; ctx.fillText(note,PAD+550,y);
   });
-  y+=40+125;
+  y+=40+70;
   const passAll=res.overall_pass;
-  ctx.fillStyle=passAll?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD,y-80,1400,105);
-  ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 65px sans-serif";
-  ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+25, y-10);
+  ctx.fillStyle=passAll?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD,y-40,700,53);
+  ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 33px sans-serif";
+  ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+13, y-5);
 
   // ---- Grafiek (nog steeds pagina 1, direct na het eindoordeel) ----
   y+=50+60;
@@ -1636,13 +1648,13 @@ function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx, splitPx){
   const pages=[];
   if(hasSplit){
     const s1=Math.min(availW/imgWpx, availH/splitPx);
-    pages.push({scale:s1, ty:PAGE_H-MARGIN-imgHpx*s1});           // pagina 1: rows [0,splitPx), boven uitgelijnd
+    pages.push({scale:s1, ty:PAGE_H-MARGIN-imgHpx*s1, rowStart:0, rowEnd:splitPx});           // pagina 1: rows [0,splitPx), boven uitgelijnd
     const regionH2=imgHpx-splitPx;
     const s2=Math.min(availW/imgWpx, availH/regionH2);
-    pages.push({scale:s2, ty:PAGE_H-MARGIN-regionH2*s2});         // pagina 2: rows [splitPx,imgHpx), boven uitgelijnd
+    pages.push({scale:s2, ty:PAGE_H-MARGIN-regionH2*s2, rowStart:splitPx, rowEnd:imgHpx});    // pagina 2: rows [splitPx,imgHpx), boven uitgelijnd
   } else {
     const s=Math.min(availW/imgWpx, availH/imgHpx);
-    pages.push({scale:s, ty:PAGE_H-MARGIN-imgHpx*s});
+    pages.push({scale:s, ty:PAGE_H-MARGIN-imgHpx*s, rowStart:0, rowEnd:imgHpx});
   }
   const nPages=pages.length;
   const pageObjNums=pages.map((_,i)=>3+i);
@@ -1670,8 +1682,14 @@ function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx, splitPx){
   push("\nendstream\nendobj\n");
   pages.forEach((p,i)=>{
     const drawW=imgWpx*p.scale, drawH=imgHpx*p.scale, tx=(PAGE_W-drawW)/2, ty=p.ty;
+    // Expliciete clip op alleen dit pagina's rijbereik -- zonder deze clip
+    // liep (bij een breedte-gebonden schaal, dus met "slack" in de hoogte)
+    // de inhoud van de volgende regio gewoon door tot de paginarand, wat
+    // dubbele/afgekapte content op de pagina-overgang gaf.
+    const contentH=(p.rowEnd-p.rowStart)*p.scale, clipY=ty+drawH-contentH;
+    const clip=tx.toFixed(2)+" "+clipY.toFixed(2)+" "+drawW.toFixed(2)+" "+contentH.toFixed(2)+" re W n";
     const contentStream=drawW.toFixed(2)+" 0 0 "+drawH.toFixed(2)+" "+tx.toFixed(2)+" "+ty.toFixed(2)+" cm /Im1 Do";
-    const contentBytes=enc.encode("q\n"+contentStream+"\nQ");
+    const contentBytes=enc.encode("q\n"+clip+"\n"+contentStream+"\nQ");
     beginObj(contentObjNums[i]);
     push("<</Length "+contentBytes.length+">>\nstream\n");
     push(contentBytes);
