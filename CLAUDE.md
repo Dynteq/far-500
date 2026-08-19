@@ -47,6 +47,64 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (vervolg: L-werkelijk-tekenfix, PDF-opmaak 2-pagina's,
+  C4-override-knop, en een forse Standard-mode-vereenvoudiging, alles op
+  verzoek, alles in `FAR-500.html`):
+  - **Bugfix**: `Lused()` gebruikte een handmatig ingevoerde "L werkelijk"
+    (altijd positief, het is een meetlint-lengte) rechtstreeks, ook als de
+    berekende L (uit de hoeken) negatief moet zijn voor deze hoek-conventie
+    -- gaf bij beide Vconsist-metingen (L ingevoerd=+208, berekend=-199,03)
+    een omgekeerde/onzinnige handvathoogte. Nu neemt `Lused()` het teken van
+    de berekende L over en past dat toe op |Lman|.
+  - **PDF-rapport nu 2 pagina's** (A4 portrait): pagina 1 = tekst/setup/
+    criteria/uitkomst (2.5x grotere tekst dan het oorspronkelijke ontwerp,
+    boven uitgelijnd), pagina 2 = de grafiek (30% hoger dan de vorige 1.5x-
+    versie, vult de paginabreedte). Nodig omdat beide wensen samen niet meer
+    op 1 pagina pasten zonder dat de grafiek de breedte niet meer zou
+    vullen. `drawAngleForceChart()` kreeg een `axisFontPx`-parameter
+    (default 15, voor de live UI) zodat het rapport (axisFontPx=38, geeft na
+    de ~0.32x paginaschaal ~12pt) en de live grafiek elk hun eigen passende
+    astekstgrootte hebben -- gedeelde code, anders zou 12pt-astekst in de
+    live UI enorm ogen. "Omhoog"/"omlaag"-labels hangen nu vast aan het
+    werkelijke punt op de meetlijn (rond -30°/-15°, binnen de betreffende
+    beweging) i.p.v. op een vaste positie.
+  - **C4 (snelheid/versnelling)**: default max. snelheid in de UI 40→60cm/s.
+    Nieuwe knop "Overschrijven" (+ 2 velden) direct bij de Rapportage-
+    knoppen om de limiet vlak vóór het genereren van een rapport aan te
+    passen (schrijft door naar de bestaande vmax/amax-velden, geen apart
+    bijgehouden status). Bevestigd (met een echte meting) dat de bestaande
+    FAIL-banner al reactief de live ingestelde limiet + de 4-punts-smoothing
+    gebruikt -- geen code-wijziging nodig, wel bleek de FAIL bij dat
+    voorbeeld van versnelling te komen, niet snelheid.
+  - **Standard mode fors vereenvoudigd** (`body.standard .adv-only`-regel
+    hergebruikt, plus wat losse `display:none`/herstructurering):
+    verborgen: sensor-oriëntatiekaart + "Reset bereik", "Tare 0°",
+    "Meetgegevens XLSX" (CSV-knop blijft), samples/t/accu/status-regel, de
+    snelheidslijn+legenda in de "Verloop"-grafiek, en (binnen Handvat-
+    posities) het hoek-override-blok + "H/L berekend" + "H/L werkelijk".
+    De banner toont in Standard mode nooit meer "TEST GEFAALD" op snelheid/
+    versnelling (altijd "METING OK" zolang er wel meetdata is) -- ongewijzigd
+    in Advanced. "Geschiedenis — laatste metingen" is nu altijd verborgen
+    (in beide modi, `style="display:none"`, functies blijven intact).
+    "Handvat-posities → geometrie" is niet langer adv-only (nu in Standard
+    zichtbaar) omdat Standard-gebruikers de positie wél moeten kunnen
+    vastleggen: de HOOG/LAAG-velden knipperen (dikke oranje rand, 1s aan/1s
+    uit, CSS `@keyframes`) zolang die positie niet vastgelegd is
+    (`updateCaptureBlink()`, aangeroepen vanuit `computeGeo()`), met een
+    vaste toelichting erboven. Upload-code-veld + de (hernoemde) knop "Maak
+    rapportage + Analyse PDF" zijn ook in Standard mode zichtbaar (XLSX-
+    rapportknop blijft adv-only); die PDF-knop uploadt het rapport nu in
+    **beide** modi altijd ook naar GitHub (naast de lokale download),
+    hergebruikt de bestaande upload-code/relay.
+  - **Getest**: `node --check`, en losse jsdom-smoketests per onderdeel
+    (Vconsist-cijfers vóór/na de Lused()-fix, 2-pagina-PDF vult op beide
+    pagina's de breedte + juiste astekstgrootte, Standard/Advanced-verschil
+    in de banner met dezelfde overschrijding-data, capture-blink aan/uit bij
+    vastleggen, en een gesimuleerde klik op de PDF-knop die bevestigt dat er
+    precies 1 upload-aanroep gebeurt met de juiste bestandsnaam). **Niet
+    visueel gecontroleerd** in een echte browser (geen browser-tooling in
+    dit environment) -- graag zelf Standard/Advanced en het PDF-rapport
+    even doorlopen.
 - **2026-08-19** (grafiek-optimalisatie: oranje breakaway-kader eenzijdig +
   PDF portrait A4 + live grafiek = PDF-grafiek, op verzoek), alles in
   `FAR-500.html`, `drawAngleForceChart()`:

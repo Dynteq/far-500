@@ -79,6 +79,9 @@
   .collapsible.open{max-height:160px;opacity:1}
 
   body.standard .adv-only{display:none !important}
+  #yHighField, #yLowField{border:3px solid transparent;border-radius:8px;padding:4px 6px;margin:-4px -6px 8px -6px}
+  #yHighField.needs-capture, #yLowField.needs-capture{animation:blinkOrangeBorder 2s steps(1,end) infinite}
+  @keyframes blinkOrangeBorder{0%,49%{border-color:var(--orange)}50%,100%{border-color:transparent}}
   .buildstamp{position:fixed;right:8px;bottom:6px;z-index:80;font-family:var(--mono);font-size:10px;
               color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:5px;
               padding:2px 7px;opacity:.85;pointer-events:none}
@@ -119,7 +122,7 @@
         <div class="val"><span id="angleVal">—</span><span class="unit">°</span></div></div>
     </div>
 
-    <div class="card">
+    <div class="card adv-only">
       <h3>Sensor-oriëntatie (ruw) — kantelcontrole</h3>
       <div class="calc"><span>X (pitch)</span><b><span id="rawX">—</span>°&nbsp;&nbsp;<span class="rng" id="rngX">—</span></b></div>
       <div class="calc"><span>Y (roll)</span><b><span id="rawY">—</span>°&nbsp;&nbsp;<span class="rng" id="rngY">—</span></b></div>
@@ -131,17 +134,23 @@
     <div class="banner" id="resultBanner">nog geen meting</div>
     <div class="btns">
       <button id="btnConnect" class="primary wide">Verbinden</button>
-      <button id="btnTare" disabled>Tare 0°</button>
+      <button id="btnTare" class="adv-only" disabled>Tare 0°</button>
       <button id="btnStop" disabled>Stop</button>
       <button id="btnStart" class="primary" disabled>Start meting</button>
       <button id="btnClear" class="danger adv-only" disabled>Wis device</button>
-      <button id="btnXlsx" class="primary wide" disabled>Meetgegevens XLSX</button>
-      <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
-      <button id="btnReportPdf" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse PDF</button>
-      <div class="field wide adv-only" id="ghSecretField">
+      <button id="btnXlsx" class="primary wide adv-only" disabled>Meetgegevens XLSX</button>
+      <div class="field wide adv-only" id="c4OverrideField">
+        <label>Snelheid/versnelling (C4)</label>
+        <input id="vmaxOverride" class="num" type="number" step="1" title="Max snelheid (cm/s)">
+        <input id="amaxOverride" class="num" type="number" step="1" title="Max versnelling (cm/s²)">
+        <button id="btnC4Override" title="Overschrijft de snelheid/versnelling-limiet (kaart 'Limieten &amp; live') vóórdat het rapport gegenereerd wordt">Overschrijven</button>
+      </div>
+      <div class="field wide" id="ghSecretField">
         <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code">
       </div>
-      <div class="hint wide adv-only" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
+      <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
+      <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
+      <button id="btnReportPdf" class="wide" disabled title="Vereist L en H (Handvat-posities → geometrie); wordt ook naar GitHub geüpload">Maak rapportage + Analyse PDF</button>
       <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
       <button id="btnCsv" disabled>Download CSV</button>
       <button id="btnDump" class="adv-only" disabled>Device-log</button>
@@ -179,40 +188,43 @@
       <div class="hint" id="oldPdfDlFallback"></div>
     </div>
 
-    <div class="card adv-only">
+    <div class="card">
       <h3>Handvat-posities → geometrie</h3>
-      <div class="field">
+      <div class="hint" style="margin-bottom:10px">Plaats de goot <b>omhoog</b>, meet de handvat-hoogte, vul die in en klik op "Huidige positie vastleggen". Herhaal daarna voor de positie <b>laag</b>.</div>
+      <div class="field" id="yHighField">
         <label>Handvat HOOG (cm)</label>
         <input id="yHigh" class="num" type="number" step="0.1" placeholder="hoogte">
         <button id="capHigh">Huidige positie vastleggen</button><span class="cap" id="angHigh">—</span>
       </div>
-      <div class="field">
+      <div class="field" id="yLowField">
         <label>Handvat LAAG (cm)</label>
         <input id="yLow" class="num" type="number" step="0.1" placeholder="hoogte">
         <button id="capLow">Huidige positie vastleggen</button><span class="cap" id="angLow">—</span>
       </div>
-      <div class="hint" style="margin:2px 0 8px">Geen live hoek beschikbaar (bv. na het laden van een oude meting waarbij de hoek niet is vastgelegd)? Vul de hoek handmatig in en klik op "Overschrijf posities".</div>
-      <div class="field">
-        <label>Hoek HOOG (deg, hand.)</label>
-        <input id="angHighManual" class="num" type="number" step="0.1" value="1.0">
+      <div class="adv-only">
+        <div class="hint" style="margin:2px 0 8px">Geen live hoek beschikbaar (bv. na het laden van een oude meting waarbij de hoek niet is vastgelegd)? Vul de hoek handmatig in en klik op "Overschrijf posities".</div>
+        <div class="field">
+          <label>Hoek HOOG (deg, hand.)</label>
+          <input id="angHighManual" class="num" type="number" step="0.1" value="1.0">
+        </div>
+        <div class="field">
+          <label>Hoek LAAG (deg, hand.)</label>
+          <input id="angLowManual" class="num" type="number" step="0.1" value="-46.0">
+          <button id="btnOverridePositions">Overschrijf posities</button>
+        </div>
+        <div class="calc"><span>H berekend</span><b id="valH">—</b></div>
+        <div class="calc"><span>L berekend</span><b id="valL">—</b></div>
+        <div class="field" style="margin-top:8px"><label>H werkelijk (cm)</label><input id="Hman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
+        <div class="field"><label>L werkelijk (cm)</label><input id="Lman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
+        <div class="hint" id="geoHint">Werkelijke waarden hebben voorrang op de berekende voor afstand/hoogte.</div>
       </div>
-      <div class="field">
-        <label>Hoek LAAG (deg, hand.)</label>
-        <input id="angLowManual" class="num" type="number" step="0.1" value="-46.0">
-        <button id="btnOverridePositions">Overschrijf posities</button>
-      </div>
-      <div class="calc"><span>H berekend</span><b id="valH">—</b></div>
-      <div class="calc"><span>L berekend</span><b id="valL">—</b></div>
-      <div class="field" style="margin-top:8px"><label>H werkelijk (cm)</label><input id="Hman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
-      <div class="field"><label>L werkelijk (cm)</label><input id="Lman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
-      <div class="hint" id="geoHint">Werkelijke waarden hebben voorrang op de berekende voor afstand/hoogte.</div>
     </div>
 
     <div class="card adv-only">
       <h3>Limieten & live</h3>
       <label class="toggle"><input type="checkbox" id="limitsEnabled" checked>Snelheid/versnelling-limiet controleren</label>
       <div class="collapsible open" id="limitsFields">
-        <div class="field"><label>Max snelheid (cm/s)</label><input id="vmax" class="num" type="number" step="1" value="40"></div>
+        <div class="field"><label>Max snelheid (cm/s)</label><input id="vmax" class="num" type="number" step="1" value="60"></div>
         <div class="field"><label>Max versnelling (cm/s²)</label><input id="amax" class="num" type="number" step="1" value="100"></div>
       </div>
       <div class="calc"><span>Afstand nu</span><b id="valArc">—</b></div>
@@ -221,7 +233,7 @@
       <div class="calc"><span>Piek |v| / |a|</span><b id="valPeak">—</b></div>
     </div>
 
-    <div class="meta">
+    <div class="meta adv-only">
       samples <b id="nSamples">0</b> · t <b id="lastT">0.00</b> s · accu <b id="bat">—</b> %<br>
       meting <b id="runState">gestopt</b>
     </div>
@@ -235,7 +247,7 @@
         <span><i style="background:var(--cyan)"></i>kracht (N)</span>
         <span><i style="background:var(--amber)"></i>hoek (°)</span>
         <span><i style="background:var(--green)"></i>afstand (cm)</span>
-        <span><i style="background:var(--purple)"></i>snelheid (cm/s)</span>
+        <span class="adv-only"><i style="background:var(--purple)"></i>snelheid (cm/s)</span>
         <span><i style="background:var(--ink)"></i>│20 cm</span>
         <span><i style="background:var(--orange)"></i>│135 cm</span>
       </div>
@@ -243,9 +255,9 @@
     </div>
     <div class="chart-wrap">
       <h2>Kracht vs. hoek</h2>
-      <canvas id="xyCanvas" data-h="420"></canvas>
+      <canvas id="xyCanvas" data-h="630"></canvas>
     </div>
-    <div class="chart-wrap adv-only" id="histWrap">
+    <div class="chart-wrap adv-only" id="histWrap" style="display:none">
       <h2>Geschiedenis — laatste metingen op device</h2>
       <div class="btns" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
         <button id="btnHistImport" disabled>Importeer geschiedenis</button>
@@ -262,7 +274,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 14:15</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 15:07</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -296,7 +308,21 @@ let A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m1
 // dit een positieve L, wat zulke (correcte) geometrieën afkeurde tot
 // "ongeldig" of, erger, deed sluipen dat een verouderde/inconsistente L uit
 // een geladen oud bestand bleef hangen (zie btnOldMeasLoad).
-function Lused(){ return (geo.Lman!=null&&geo.Lman!==0&&isFinite(geo.Lman))?geo.Lman:((geo.L!=null&&geo.L!==0&&isFinite(geo.L))?geo.L:null); }
+// "L werkelijk" is een fysieke meetlint-lengte -- gebruikers vullen daar
+// logischerwijs altijd een POSITIEF getal in, ook als de correcte L voor
+// deze hoek-conventie negatief moet zijn (zie boven). Neem daarom het teken
+// van de berekende geo.L over (indien bekend) en pas dat toe op de absolute
+// waarde van geo.Lman, i.p.v. geo.Lman kritiekloos als (mogelijk verkeerd
+// getekende) vervanging te gebruiken -- dat gaf bij o.a. de Vconsist-
+// metingen (L ingevoerd=+208, berekend=-199,03) een omgekeerde/onzinnige
+// handvathoogte.
+function Lused(){
+  if(geo.Lman!=null&&geo.Lman!==0&&isFinite(geo.Lman)){
+    const sign=(geo.L!=null&&geo.L!==0&&isFinite(geo.L))?Math.sign(geo.L):1;
+    return sign*Math.abs(geo.Lman);
+  }
+  return (geo.L!=null&&geo.L!==0&&isFinite(geo.L))?geo.L:null;
+}
 function Hused(){ return (geo.Hman!=null&&isFinite(geo.Hman))?geo.Hman:((geo.H!=null&&isFinite(geo.H))?geo.H:null); }
 const haveL =()=>Lused()!=null;
 const haveHL=()=>haveL()&&Hused()!=null;
@@ -403,6 +429,19 @@ $("btnOverridePositions").onclick=()=>{
 ["Hman","Lman"].forEach(id=>$(id).addEventListener("input",()=>{ const v=parseFloat($(id).value);
   geo[id]=isNaN(v)?null:v; analyze(); redraw(); }));
 ["vmax","amax"].forEach(id=>$(id).addEventListener("input",()=>{ analyze(); redraw(); }));
+// Snelkoppeling direct bij de Rapportage-knoppen (i.p.v. alleen in de verder
+// weg staande "Limieten & live"-kaart) om de snelheid/versnelling-limiet
+// (C4) vlak vóór het genereren van een rapport te kunnen overschrijven.
+// Schrijft simpelweg door naar de bestaande vmax/amax-velden (single source
+// of truth), dus geen apart bijgehouden status.
+$("vmaxOverride").value=$("vmax").value; $("amaxOverride").value=$("amax").value;
+$("btnC4Override").onclick=()=>{
+  const v=parseFloat($("vmaxOverride").value), a=parseFloat($("amaxOverride").value);
+  if(isNaN(v)&&isNaN(a)){ alert("Vul minstens één van beide waarden in."); return; }
+  if(!isNaN(v)) $("vmax").value=v;
+  if(!isNaN(a)) $("amax").value=a;
+  analyze(); redraw();
+};
 (function(){ const cb=$("limitsEnabled"), fields=$("limitsFields");
   function apply(on){ fields.classList.toggle("open",on);
     try{ localStorage.setItem("far500limits", on?"1":"0"); }catch(e){}
@@ -412,6 +451,7 @@ $("btnOverridePositions").onclick=()=>{
   cb.checked=init; apply(init);
 })();
 function limitsOn(){ return $("limitsEnabled").checked; }
+function isStandard(){ return document.body.classList.contains("standard"); }
 (function(){ const inp=$("ghSecret"), field=$("ghSecretField"), saved=$("ghSecretSaved"), change=$("ghSecretChange");
   function showSaved(){ field.style.display="none"; saved.style.display="block"; }
   function showField(){ field.style.display=""; saved.style.display="none"; inp.focus(); }
@@ -455,7 +495,14 @@ function computeGeo(){
         $("valL").textContent=geo.L.toFixed(1)+" cm"; $("valH").textContent=geo.H.toFixed(1)+" cm"; } }
     if(!geo.valid){ $("valL").textContent="ongeldig"; $("valH").textContent="—"; }
   }
-  analyze(); redraw();
+  analyze(); redraw(); updateCaptureBlink();
+}
+// Laat de Handvat HOOG/LAAG-velden oranje knipperen (dikke rand, 1s aan/1s
+// uit) zolang die positie nog niet is vastgelegd -- op verzoek, zodat ook in
+// Standard mode duidelijk is dat deze stap nog moet gebeuren.
+function updateCaptureBlink(){
+  $("yHighField").classList.toggle("needs-capture", geo.angHigh==null);
+  $("yLowField").classList.toggle("needs-capture", geo.angLow==null);
 }
 
 /* ---------------- data ---------------- */
@@ -786,6 +833,11 @@ function setBanner(){
   const el=$("resultBanner"); el.className="banner";
   if(!haveL()){ el.textContent="voer L in (of leg posities vast) voor beoordeling"; return; }
   if(samples.length<3){ el.textContent="wacht op meetdata…"; return; }
+  // In Standard mode is de snelheid/versnelling-controle (C4) nergens
+  // anders zichtbaar (kaart "Limieten & live" en de snelheidslijn in de
+  // grafiek zijn adv-only) -- een overschrijding daarvan mag dan ook nooit
+  // als "TEST GEFAALD" gemeld worden, op verzoek.
+  if(isStandard()){ el.classList.add("ok"); el.textContent="METING OK"; return; }
   if(A.failA||A.failB){ el.classList.add("fail"); let r=[];
     if(A.failA) r.push("(A) max snelheid overschreden ("+A.maxV.toFixed(1)+" cm/s)");
     if(A.failB) r.push("(B) max versnelling overschreden ("+A.maxA.toFixed(1)+" cm/s²)");
@@ -945,11 +997,19 @@ function wrapText(ctx,text,maxWidth){
 // rood i.p.v. het gebruikelijke cyaan gemarkeerd, zodat de PASS/FAIL-info die
 // de oude envelope-/hoogte-grafiek gaf niet helemaal verloren gaat. C4 wordt
 // hier bewust niet in meegenomen (A6: geen officiële eis).
-function drawAngleForceChart(ctx,x,y,w,h,series,res){
+function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // Layout: [x,y,w,h] is het volledige toegewezen blok. TOPAX/BOTAX reserveren
   // ruimte voor resp. de handvathoogte-as (boven) en de hoek-as +
   // afgelegde-afstand-as (onder) rond het eigenlijke plot-rechthoek [x,py,w,ph].
-  const TOPAX=24, BOTAX=54;
+  // axisFontPx is instelbaar omdat deze routine door TWEE heel verschillende
+  // contexten gebruikt wordt: de live UI (canvas ~1:1 op het scherm, dus een
+  // bescheiden fontgrootte) en het PDF/XLSX-rapport (een groot canvas dat
+  // achteraf flink teruggeschaald wordt om op een A4-pagina te passen, dus
+  // juist een groot fontgetal nodig heeft om na die terugschaling nog
+  // leesbaar te zijn). Default (15px) is voor de live weergave; het rapport
+  // geeft een grotere waarde door (zie buildAnalyseReportCanvas()).
+  const AF=axisFontPx||15;
+  const TOPAX=Math.round(AF*2.3), BOTAX=Math.round(AF*5);
   const py=y+TOPAX, ph=h-TOPAX-BOTAX;
   const n=series.t_s.length;
   const X=d=>x+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*w;
@@ -1024,12 +1084,12 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
 
   // ---- hoek-as onderaan: elke 5 graden een dun streepje over de volle
   // grafiekhoogte + label ----
-  ctx.textAlign="center"; ctx.font="10.5px sans-serif";
+  ctx.textAlign="center"; ctx.font=AF+"px sans-serif";
   for(let deg=Math.ceil(ANGLE_MIN/5)*5; deg<=ANGLE_MAX+1e-6; deg+=5){
     const px=X(deg);
     ctx.strokeStyle="rgba(0,0,0,0.22)"; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+ph); ctx.stroke();
-    ctx.fillStyle="#333"; ctx.fillText(deg.toFixed(0)+"°", px, py+ph+14);
+    ctx.fillStyle="#333"; ctx.fillText(deg.toFixed(0)+"°", px, py+ph+Math.round(AF*1.33));
   }
 
   // ---- handvathoogte-as bovenaan: dikke streep + label bij 135 en 170 cm ----
@@ -1039,14 +1099,15 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
     const px=X(deg);
     ctx.strokeStyle="#444"; ctx.lineWidth=2.6;
     ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+ph); ctx.stroke();
-    ctx.fillStyle="#222"; ctx.font="bold 11px sans-serif";
-    ctx.fillText(label, px, py-8);
-    ctx.font="10.5px sans-serif";
+    ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
+    ctx.fillText(label, px, py-Math.round(AF*0.67));
+    ctx.font=AF+"px sans-serif";
   });
 
   // ---- afgelegde afstand op de cirkelbaan onderaan: korte streepjes op
   // 0/10/20 cm vanaf de start van de omhoog- resp. omlaaggaande beweging
   // (elk vanaf zijn eigen startpunt, dus twee onafhankelijke 0-punten) ----
+  const AFtick=Math.round(AF*0.85);
   if(L!=null && (upMove || downMove)){
     const drawArcTicks=(move,sign,arrow)=>{
       if(!move) return;
@@ -1057,8 +1118,8 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
         const px=X(deg);
         ctx.strokeStyle="#1e9e6a"; ctx.lineWidth=1.6;
         ctx.beginPath(); ctx.moveTo(px,py+ph-10); ctx.lineTo(px,py+ph+4); ctx.stroke();
-        ctx.fillStyle="#1e9e6a"; ctx.font="9.5px sans-serif";
-        ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py+ph+30);
+        ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif";
+        ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py+ph+Math.round(AF*2.8));
       });
     };
     drawArcTicks(upMove,1,"↑");
@@ -1085,20 +1146,37 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res){
     ctx.fillStyle=bad?"#CC0000":"#00b4ce";
     ctx.beginPath(); ctx.arc(X(deg),Y(N), bad?3.4:2.2, 0, 7); ctx.fill(); }
 
-  // ---- vaste oriëntatie-labels "omhoog"/"omlaag", op verzoek ----
-  ctx.textAlign="center"; ctx.font="bold 12px sans-serif"; ctx.fillStyle="#333";
-  [[-30,"omhoog"],[-15,"omlaag"]].forEach(([degLbl,txt])=>{
-    if(degLbl<ANGLE_MIN||degLbl>ANGLE_MAX) return;
-    ctx.fillText(txt, X(degLbl), py+18);
-  });
+  // ---- "omhoog"/"omlaag"-labels, verbonden aan de meetlijn: rond -30°
+  // (binnen de omhooggaande beweging) resp. -15° (omlaaggaande beweging) --
+  // gezocht wordt het dichtstbijzijnde sample bínnen die beweging, het label
+  // wordt met een kort streepje aan dat punt op de lijn "vastgemaakt". ----
+  function labelOnMove(move,targetDeg,txt){
+    if(!move) return;
+    let bestI=-1, bestD=Infinity;
+    for(let i=move.start;i<=move.end;i++){ const deg=series.angle_deg[i];
+      if(isNaN(deg)) continue;
+      const d=Math.abs(deg-targetDeg); if(d<bestD){ bestD=d; bestI=i; } }
+    if(bestI<0) return;
+    const deg=series.angle_deg[bestI], N=series.force_N[bestI];
+    if(N===""||isNaN(N)) return;
+    const px=X(deg), py2=Y(N);
+    const above=(py2-py)>AF*2.7;   // genoeg ruimte boven het punt? anders label onder het punt
+    ctx.fillStyle="#333"; ctx.beginPath(); ctx.arc(px,py2,3.6,0,7); ctx.fill();
+    ctx.strokeStyle="#333"; ctx.lineWidth=1.4; ctx.beginPath();
+    ctx.moveTo(px,py2); ctx.lineTo(px, above?py2-Math.round(AF*1.2):py2+Math.round(AF*1.2)); ctx.stroke();
+    ctx.textAlign="center"; ctx.font="bold "+(AF+1)+"px sans-serif";
+    ctx.fillText(txt, px, above?py2-Math.round(AF*1.47):py2+Math.round(AF*2));
+  }
+  labelOnMove(upMove,-30,"omhoog");
+  labelOnMove(downMove,-15,"omlaag");
   ctx.textAlign="left";
 
   // ---- kader + assen-labels ----
   ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,py,w,ph);
-  ctx.fillStyle="#333"; ctx.font="12px sans-serif";
-  ctx.fillText("hoek (°)", x+w/2-22, py+ph+46);
-  ctx.fillText("+"+FORCE_MAX.toFixed(0)+" N", x+2, py+12);
-  ctx.fillText(FORCE_MIN.toFixed(0)+" N", x+2, py+ph-4);
+  ctx.fillStyle="#333"; ctx.font=(AF+1)+"px sans-serif";
+  ctx.fillText("hoek (°)", x+w/2-26, py+ph+Math.round(AF*4.3));
+  ctx.fillText("+"+FORCE_MAX.toFixed(0)+" N", x+4, py+Math.round(AF*1.07));
+  ctx.fillText(FORCE_MIN.toFixed(0)+" N", x+4, py+ph-Math.round(AF*0.4));
 }
 // Bouwt EEN groot rapport-canvas (titel/setup/criteria/PASS-FAIL-tabel/
 // eindoordeel + beide grafieken). Wordt zowel als afbeelding in de
@@ -1113,18 +1191,30 @@ function buildAnalyseReportCanvas(){
   const amaxLimit=limitsOn()?(parseFloat($("amax").value)||null):null;
   const res=runForceCheck(series,vmaxLimit,amaxLimit);
 
-  const W=1700, PAD=40, lineH=20;
+  // Alle tekst/lijnafstanden hieronder zijn 2.5x zo groot als de oorspron-
+  // kelijke ontwerpmaten (op verzoek -- de tekst was onleesbaar klein op de
+  // A4-portrait-pagina). W blijft ongewijzigd (1700px); PAD/lineH en alle
+  // font-/spatiëringsconstanten zijn met 2.5 vermenigvuldigd zodat de
+  // verhoudingen gelijk blijven.
+  const W=1700, PAD=60, lineH=50;
   const meas=document.createElement("canvas").getContext("2d");
-  meas.font="12.5px sans-serif";
+  meas.font="31px sans-serif";
   const critLines=[]; criteriaTextLines().forEach(line=>wrapText(meas,line,W-2*PAD-8).forEach(l=>critLines.push(l)));
 
-  const CHART_H=678;   // 600px plot-rechthoek (1.5x van de oorspronkelijke 400px, op verzoek voor preciezere krachtaflezing) + ruimte voor de hoogte-as (boven) en de hoek-/afstand-as (onder), zie TOPAX/BOTAX in drawAngleForceChart()
-  const H = PAD + 30 + 30 + 26 + 26 + 20
-    + 24 + 7*lineH + 16
-    + 24 + critLines.length*lineH + 16
-    + 24 + 24 + 4*lineH + 16
-    + 50 + 20
-    + 24 + CHART_H + PAD;
+  // axisFontPx=38 geeft, na de ~0.32x terugschaling naar de A4-pagina (zie
+  // buildAnalysisPdfBlob()), een leesbare ~12pt astekst (op verzoek --
+  // eerder leverde het kleinere lettertype maar ~3-4pt op de pagina op).
+  // TOPAX/BOTAX (in drawAngleForceChart()) groeien mee met axisFontPx, dus
+  // CHART_H moet daarop worden afgestemd om de gevraagde 780px plot-hoogte
+  // (30% boven de al 1.5x'e 600px) te behouden.
+  const CHART_AXIS_FONT=38;
+  const CHART_H=780+Math.round(CHART_AXIS_FONT*2.3)+Math.round(CHART_AXIS_FONT*5);
+  const H = PAD + 75 + 75 + 65 + 65 + 50
+    + 60 + 7*lineH + 40
+    + 60 + critLines.length*lineH + 40
+    + 60 + 60 + 4*lineH + 40
+    + 125 + 50
+    + 60 + CHART_H + PAD;
 
   const canvas=document.createElement("canvas");
   canvas.width=W; canvas.height=Math.round(H);
@@ -1132,13 +1222,13 @@ function buildAnalyseReportCanvas(){
   ctx.fillStyle="#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle="#111";
   let y=PAD;
-  ctx.font="bold 24px sans-serif"; ctx.fillText("FAR-500 — bedienkracht-analyse", PAD, y+=24);
-  ctx.font="14px sans-serif"; y+=26; ctx.fillText($("naam").value||"(naam onbekend)", PAD, y);
-  if($("notities").value){ y+=22; ctx.fillText($("notities").value, PAD, y); }
-  y+=22; ctx.fillText(loadedMeasMeta?loadedMeasMeta.datumStr:(measStart||new Date()).toLocaleString('nl-NL'), PAD, y);
-  y+=30;
-  ctx.font="bold 16px sans-serif"; ctx.fillText("Setup", PAD, y); y+=6;
-  ctx.font="13px sans-serif";
+  ctx.font="bold 60px sans-serif"; ctx.fillText("FAR-500 — bedienkracht-analyse", PAD, y+=60);
+  ctx.font="35px sans-serif"; y+=65; ctx.fillText($("naam").value||"(naam onbekend)", PAD, y);
+  if($("notities").value){ y+=55; ctx.fillText($("notities").value, PAD, y); }
+  y+=55; ctx.fillText(loadedMeasMeta?loadedMeasMeta.datumStr:(measStart||new Date()).toLocaleString('nl-NL'), PAD, y);
+  y+=75;
+  ctx.font="bold 40px sans-serif"; ctx.fillText("Setup", PAD, y); y+=15;
+  ctx.font="33px sans-serif";
   const naText=v=>(v==null||v===""||isNaN(v))?"—":v;
   const setupRows=[
     ["Meetas","3D-vector (2-punts justering 0°/45°)"],
@@ -1149,30 +1239,36 @@ function buildAnalyseReportCanvas(){
     ["Max snelheid (cm/s)", limitsOn()?naText(parseFloat($("vmax").value)):"(default "+DEFAULT_VMAX+")"],
     ["Max versnelling (cm/s2)", limitsOn()?naText(parseFloat($("amax").value)):"(default "+DEFAULT_AMAX+")"],
   ];
-  setupRows.forEach(([lbl,val])=>{ y+=lineH; ctx.fillText(lbl+":", PAD, y); ctx.fillText(String(val), PAD+360, y); });
-  y+=16; y+=24; ctx.font="bold 16px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=6;
-  ctx.font="12.5px sans-serif";
+  setupRows.forEach(([lbl,val])=>{ y+=lineH; ctx.fillText(lbl+":", PAD, y); ctx.fillText(String(val), PAD+900, y); });
+  y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=15;
+  ctx.font="31px sans-serif";
   critLines.forEach(l=>{ y+=lineH; ctx.fillText(l, PAD, y); });
-  y+=16; y+=24; ctx.font="bold 16px sans-serif"; ctx.fillText("Uitkomst", PAD, y); y+=6;
-  y+=24; ctx.font="bold 13px sans-serif";
-  ctx.fillText("Criterium",PAD,y); ctx.fillText("Resultaat",PAD+90,y); ctx.fillText("Onderbouwing",PAD+220,y);
+  y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Uitkomst", PAD, y); y+=15;
+  y+=60; ctx.font="bold 33px sans-serif";
+  ctx.fillText("Criterium",PAD,y); ctx.fillText("Resultaat",PAD+225,y); ctx.fillText("Onderbouwing",PAD+550,y);
   outcomeRows(res).forEach(([label,ok,note])=>{
     y+=lineH;
-    ctx.fillStyle=ok?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD+85,y-14,80,18);
-    ctx.fillStyle="#111"; ctx.font="13px sans-serif"; ctx.fillText(label,PAD,y);
-    ctx.font="bold 13px sans-serif"; ctx.fillText(ok?"PASS":"FAIL",PAD+90,y);
-    ctx.font="12.5px sans-serif"; ctx.fillText(note,PAD+220,y);
+    ctx.fillStyle=ok?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD+212,y-35,200,45);
+    ctx.fillStyle="#111"; ctx.font="33px sans-serif"; ctx.fillText(label,PAD,y);
+    ctx.font="bold 33px sans-serif"; ctx.fillText(ok?"PASS":"FAIL",PAD+225,y);
+    ctx.font="31px sans-serif"; ctx.fillText(note,PAD+550,y);
   });
-  y+=16+50;
+  y+=40+125;
   const passAll=res.overall_pass;
-  ctx.fillStyle=passAll?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD,y-32,560,42);
-  ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 26px sans-serif";
-  ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+10, y-4);
-  y+=20+24;
-  ctx.fillStyle="#111"; ctx.font="bold 14px sans-serif";
-  ctx.fillText("Kracht vs. hoek  —  groen: toegestaan | oranje: 150%-breakaway-marge (eerste 20cm) | rood: afkeur (buiten envelope of >170cm hoogte)", PAD, y); y+=8;
-  drawAngleForceChart(ctx, PAD, y, W-2*PAD, CHART_H, series, res);
-  return {canvas, series, res};
+  ctx.fillStyle=passAll?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD,y-80,1400,105);
+  ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 65px sans-serif";
+  ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+25, y-10);
+  // Splitpunt voor de PDF: tekst/setup/criteria/uitkomst op pagina 1, de
+  // titel+grafiek (hierna) op een eigen pagina 2 -- zie buildAnalysisPdfBlob().
+  // Nodig omdat 2.5x grotere tekst + een 30% hogere grafiek niet meer samen
+  // op één A4-portrait-pagina passen zonder dat de grafiek de paginabreedte
+  // niet meer zou vullen (te hoog/smal beeld anders).
+  const chartTop=y+30;
+  y+=50+60;
+  ctx.fillStyle="#111"; ctx.font="bold 35px sans-serif";
+  ctx.fillText("Kracht vs. hoek  —  groen: toegestaan | oranje: 150%-breakaway-marge (eerste 20cm) | rood: afkeur (buiten envelope of >170cm hoogte)", PAD, y); y+=20;
+  drawAngleForceChart(ctx, PAD, y, W-2*PAD, CHART_H, series, res, CHART_AXIS_FONT);
+  return {canvas, series, res, chartTop};
 }
 async function canvasToJpegBytes(canvas,quality){
   const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",quality||0.9));
@@ -1264,9 +1360,9 @@ $("btnXlsx").onclick=()=>{ const f=buildMetingXlsx(); download(f.name,f.blob); }
 $("btnXlsxGh").onclick=()=>{ const f=buildMetingXlsx(); uploadToGitHub(f.blob,f.name,"ghStatus","btnXlsxGh"); };
 
 async function buildAnalyseReportAssets(){
-  const {canvas, series, res}=buildAnalyseReportCanvas();
+  const {canvas, series, res, chartTop}=buildAnalyseReportCanvas();
   const jpegBytes=await canvasToJpegBytes(canvas,0.9);
-  return {canvas, series, res, jpegBytes};
+  return {canvas, series, res, chartTop, jpegBytes};
 }
 $("btnReportXlsx").onclick=async()=>{
   const btn=$("btnReportXlsx"); btn.disabled=true;
@@ -1281,9 +1377,14 @@ $("btnReportXlsx").onclick=async()=>{
 $("btnReportPdf").onclick=async()=>{
   const btn=$("btnReportPdf"); btn.disabled=true;
   try{
-    const {canvas, jpegBytes}=await buildAnalyseReportAssets();
-    const blob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
-    download(fnameSuffix("analyse","pdf"), blob);
+    const {canvas, chartTop, jpegBytes}=await buildAnalyseReportAssets();
+    const blob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height, chartTop);
+    const name=fnameSuffix("analyse","pdf");
+    download(name, blob);
+    // Op verzoek: in zowel Standard als Advanced wordt het PDF-rapport ook
+    // altijd naar GitHub geüpload (zelfde relay/upload-code als de andere
+    // "Naar GitHub"-knoppen) -- niet alleen lokaal gedownload.
+    await uploadToGitHub(blob, name, "ghStatus", "btnReportPdf");
   }catch(e){ alert(e.message); }
   finally{ updateReportButtons(); }
 };
@@ -1412,43 +1513,71 @@ function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
 }
 
 /* ---- Rapportage + Analyse PDF (zelfgeschreven, geen library) ---- */
-// Zelfde afweging als hierboven: 1 pagina met 1 ingesloten JPEG (het identieke
-// rapport-canvas) i.p.v. een tekst-layout-engine erbij bouwen. DCTDecode kan
-// een baseline-JPEG rechtstreeks (zonder her-encoderen) als /DeviceRGB-XObject
+// Zelfde afweging als hierboven: 1 ingesloten JPEG (het identieke rapport-
+// canvas) i.p.v. een tekst-layout-engine erbij bouwen. DCTDecode kan een
+// baseline-JPEG rechtstreeks (zonder her-encoderen) als /DeviceRGB-XObject
 // insluiten -- standaardtechniek, geen library nodig.
-function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx){
+// Twee pagina's (i.p.v. 1) zodra splitPx is opgegeven: de 2.5x grotere
+// tekst + 30% hogere grafiek passen niet meer samen op één A4-portrait-
+// pagina zonder dat de grafiek de paginabreedte niet meer zou vullen. Beide
+// pagina's tonen dezelfde ingesloten JPEG, alleen met een andere
+// plaatsing/schaal -- het ongewenste deel valt vanzelf buiten de
+// pagina-MediaBox (PDF-viewers tekenen nooit buiten de MediaBox), dus geen
+// aparte crop/clip-operator nodig.
+function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx, splitPx){
   const PAGE_W=595, PAGE_H=842, MARGIN=24; // A4 portrait, pt (op verzoek i.p.v. landscape)
   const availW=PAGE_W-2*MARGIN, availH=PAGE_H-2*MARGIN;
-  const scale=Math.min(availW/imgWpx, availH/imgHpx);
-  const drawW=imgWpx*scale, drawH=imgHpx*scale;
-  const tx=(PAGE_W-drawW)/2, ty=(PAGE_H-drawH)/2;
-  const enc=new TextEncoder();
-  const contentStream=drawW.toFixed(2)+" 0 0 "+drawH.toFixed(2)+" "+tx.toFixed(2)+" "+ty.toFixed(2)+" cm /Im1 Do";
-  const contentStr="q\n"+contentStream+"\nQ";
-  const contentBytes=enc.encode(contentStr);
+  const hasSplit=splitPx>0 && splitPx<imgHpx;
+  const pages=[];
+  if(hasSplit){
+    const s1=Math.min(availW/imgWpx, availH/splitPx);
+    pages.push({scale:s1, ty:PAGE_H-MARGIN-imgHpx*s1});           // pagina 1: rows [0,splitPx), boven uitgelijnd
+    const regionH2=imgHpx-splitPx;
+    const s2=Math.min(availW/imgWpx, availH/regionH2);
+    pages.push({scale:s2, ty:PAGE_H-MARGIN-regionH2*s2});         // pagina 2: rows [splitPx,imgHpx), boven uitgelijnd
+  } else {
+    const s=Math.min(availW/imgWpx, availH/imgHpx);
+    pages.push({scale:s, ty:PAGE_H-MARGIN-imgHpx*s});
+  }
+  const nPages=pages.length;
+  const pageObjNums=pages.map((_,i)=>3+i);
+  const imgObjNum=3+nPages;
+  const contentObjNums=pages.map((_,i)=>3+nPages+1+i);
+  const totalObjs=2+nPages+1+nPages;
 
+  const enc=new TextEncoder();
   const chunks=[]; let offset=0; const objOffsets=[];
   function push(bytesOrStr){ const b=(typeof bytesOrStr==="string")?enc.encode(bytesOrStr):bytesOrStr; chunks.push(b); offset+=b.length; }
   function beginObj(n){ objOffsets[n]=offset; push(n+" 0 obj\n"); }
 
   push("%PDF-1.4\n");
   beginObj(1); push("<</Type /Catalog /Pages 2 0 R>>\nendobj\n");
-  beginObj(2); push("<</Type /Pages /Kids [3 0 R] /Count 1>>\nendobj\n");
-  beginObj(3); push("<</Type /Page /Parent 2 0 R /MediaBox [0 0 "+PAGE_W+" "+PAGE_H+"] "+
-    "/Resources <</XObject <</Im1 4 0 R>>>> /Contents 5 0 R>>\nendobj\n");
-  beginObj(4); push("<</Type /XObject /Subtype /Image /Width "+imgWpx+" /Height "+imgHpx+
+  beginObj(2); push("<</Type /Pages /Kids ["+pageObjNums.map(n=>n+" 0 R").join(" ")+"] /Count "+nPages+">>\nendobj\n");
+  pages.forEach((p,i)=>{
+    beginObj(pageObjNums[i]);
+    push("<</Type /Page /Parent 2 0 R /MediaBox [0 0 "+PAGE_W+" "+PAGE_H+"] "+
+      "/Resources <</XObject <</Im1 "+imgObjNum+" 0 R>>>> /Contents "+contentObjNums[i]+" 0 R>>\nendobj\n");
+  });
+  beginObj(imgObjNum);
+  push("<</Type /XObject /Subtype /Image /Width "+imgWpx+" /Height "+imgHpx+
     " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+jpegBytes.length+">>\nstream\n");
   push(jpegBytes);
   push("\nendstream\nendobj\n");
-  beginObj(5); push("<</Length "+contentBytes.length+">>\nstream\n");
-  push(contentBytes);
-  push("\nendstream\nendobj\n");
+  pages.forEach((p,i)=>{
+    const drawW=imgWpx*p.scale, drawH=imgHpx*p.scale, tx=(PAGE_W-drawW)/2, ty=p.ty;
+    const contentStream=drawW.toFixed(2)+" 0 0 "+drawH.toFixed(2)+" "+tx.toFixed(2)+" "+ty.toFixed(2)+" cm /Im1 Do";
+    const contentBytes=enc.encode("q\n"+contentStream+"\nQ");
+    beginObj(contentObjNums[i]);
+    push("<</Length "+contentBytes.length+">>\nstream\n");
+    push(contentBytes);
+    push("\nendstream\nendobj\n");
+  });
 
   const xrefStart=offset;
-  let xref="xref\n0 6\n0000000000 65535 f \n";
-  for(let i=1;i<=5;i++) xref+=String(objOffsets[i]).padStart(10,"0")+" 00000 n \n";
+  let xref="xref\n0 "+(totalObjs+1)+"\n0000000000 65535 f \n";
+  for(let i=1;i<=totalObjs;i++) xref+=String(objOffsets[i]).padStart(10,"0")+" 00000 n \n";
   push(xref);
-  push("trailer\n<</Size 6 /Root 1 0 R>>\nstartxref\n"+xrefStart+"\n%%EOF");
+  push("trailer\n<</Size "+(totalObjs+1)+" /Root 1 0 R>>\nstartxref\n"+xrefStart+"\n%%EOF");
 
   return new Blob(chunks, {type:"application/pdf"});
 }
@@ -1482,7 +1611,7 @@ function drawTS(){
       const px=X(ts[i]), py=8+(1-(z-lo)/(hi-lo))*(h-30); st?x.lineTo(px,py):x.moveTo(px,py); st=true; } x.stroke(); };
   plot(samples.map(s=>s.N), getCol('--cyan'), [FORCE_MIN,FORCE_MAX]);
   plot(samples.map(s=>s.deg), getCol('--amber'), [ANGLE_MIN,ANGLE_MAX]);
-  if(haveL()){ plot(A.arc, getCol('--green')); plot(A.spd, getCol('--purple')); }
+  if(haveL()){ plot(A.arc, getCol('--green')); if(!isStandard()) plot(A.spd, getCol('--purple')); }
   const mark=(t,label,col)=>{ if(t==null)return; const px=X(t); x.strokeStyle=col; x.lineWidth=1;
     x.setLineDash([4,3]); x.beginPath(); x.moveTo(px,8); x.lineTo(px,h-22); x.stroke(); x.setLineDash([]);
     x.fillStyle=col; x.font="10px ui-monospace,monospace"; x.fillText(label,px+2,16); };
@@ -1490,7 +1619,7 @@ function drawTS(){
   mark(A.m135up,"135↑",getCol('--orange')); mark(A.m135down,"135↓",getCol('--orange'));
   x.fillStyle=getCol('--dim'); x.font="11px ui-monospace,monospace";
   x.fillText("0",pad-2,h-8); x.fillText(tmax.toFixed(1)+" s",w-46,h-8);
-  if(A.failA||A.failB){ x.fillStyle="rgba(229,86,75,.95)"; x.font="bold 12px ui-monospace,monospace";
+  if(!isStandard() && (A.failA||A.failB)){ x.fillStyle="rgba(229,86,75,.95)"; x.font="bold 12px ui-monospace,monospace";
     x.fillText("GEFAALD"+(A.failA?" A":"")+(A.failB?" B":""), pad+6, 20); }
 }
 function drawXY(){
@@ -1526,6 +1655,7 @@ function drawXY(){
   x.fillText(ANGLE_MIN.toFixed(0)+"°",pad-4,h-8); x.fillText("+"+ANGLE_MAX.toFixed(0)+"°",w-30,h-8);
 }
 redraw();
+updateCaptureBlink();
 (function(){ const tb=document.getElementById("themeToggle");
   function apply(light){ document.body.classList.toggle("light",light);
     tb.textContent = light ? "\u263e" : "\u2600";
@@ -1540,7 +1670,7 @@ redraw();
     document.body.classList.toggle("standard",standard);
     stdBtn.classList.toggle("active",standard); advBtn.classList.toggle("active",!standard);
     try{ localStorage.setItem("far500mode", standard?"standard":"advanced"); }catch(e){}
-    redraw();
+    analyze(); redraw();
   }
   stdBtn.onclick=()=>apply(true); advBtn.onclick=()=>apply(false);
   let standard=true; try{ const v=localStorage.getItem("far500mode"); if(v) standard=v==="advanced"?false:true; }catch(e){}
