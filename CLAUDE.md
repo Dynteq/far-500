@@ -47,6 +47,58 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (vervolg 5: 2 bugfixes + grafiek/PDF-verfijningen, op
+  verzoek, alles in `FAR-500.html`):
+  - **Bugfix "Meting"-kaart blijft knipperen na laden oude meting**: `.value=`
+    zetten (bij het laden via "Oude meting laden") vuurt geen `input`-event
+    af, dus `updateMetingBlink()` werd nooit opnieuw aangeroepen totdat de
+    gebruiker zelf een letter wijzigde. Nu roept `btnOldMeasLoad` die functie
+    direct aan na het zetten van naam/notities. Bevestigd met een test
+    (knippert vóór laden, stopt direct na laden van een bestand met
+    gevulde naam/notities).
+  - **Vraag over 160 cm/s²-versnelling bij `20260731_153533_Falco_Premium`
+    beantwoord/gecontroleerd**: dit IS al de gefilterde waarde (`smooth4()`
+    wordt toegepast op zowel de snelheid als, daarna, nog eens op de daaruit
+    afgeleide versnelling). Ruwe/ongefilterde piek was 602,7 cm/s², na 1x
+    smoothing (alleen snelheid) 301,3 cm/s², na de huidige dubbele smoothing
+    159,97 cm/s² -- dus een echte piek in de meting, geen rekenfout en geen
+    ruwe/ongefilterde weergave.
+  - **Root cause gevonden + gefixt voor "omhoog"/"omlaag"-labels die niet op
+    de juiste plek stonden**: `upMove`/`downMove` pakten altijd de EERSTE
+    gevonden beweging in `res.moves`, maar bij een echte (ruisige) meting
+    kan segmentMoves() een klein, niet-representatief blipje vóór de
+    eigenlijke sweep als aparte beweging herkennen. Nu wordt altijd de
+    GROOTSTE beweging per richting gebruikt (grootste cirkelbaanlengte) --
+    geldt voor de labels, het oranje breakaway-kader én de afstand-
+    tickmarks. Bevestigd met een test die zo'n storend blipje bevat: labels
+    landen nu exact op -35°/-15° van de echte sweep i.p.v. op het blipje.
+  - **Krachtraster**: ±100N-lijn weer verwijderd (te druk samen met de
+    nabije ±85N-lijn), ±85/±140/±210N blijven staan.
+  - **PDF-indeling herzien** (`buildAnalyseReportCanvas()`): de uitgebreide
+    criteria-uitleg staat nu op pagina 2 (bij de grafiek) i.p.v. pagina 1;
+    de Uitkomst-tabel + eindoordeel vormen nu de onderste helft van pagina 1
+    (titel/metadata/setup de bovenste helft). Metadata (naam/notities/datum)
+    staat compacter op 1 regel i.p.v. 3 losse regels -- door die besparing
+    komen beide helften van pagina 1 toevallig vrijwel exact op dezelfde
+    hoogte uit (570px elk, 0px verschil, geen kunstmatige opvulling nodig).
+  - **Getest**: `node --check`, en jsdom-smoketests per onderdeel (het
+    knipper-bugfix-scenario met een echt via `buildMetingXlsx()` opgebouwd
+    bestand, de exacte ruw/1x/2x-smoothing-vergelijking op de echte
+    `20260731_153533_Falco_Premium.xlsx`, het "grootste beweging"-scenario
+    met een kunstmatig storend blipje, de 50/50-paginaverdeling en dat
+    "Uitkomst" vóór en "Criteria" ná het paginasplitspunt staan, en de
+    volledige XLSX/PDF-exportpijplijn). **Niet visueel gecontroleerd** in
+    een echte browser (geen browser-tooling in dit environment).
+- **2026-08-19** (vervolg 4: browser-compat-suggesties zijn nu platform-
+  bewuste links, op verzoek), in `FAR-500.html`: elke genoemde browser/app
+  in de "geen Web Bluetooth"-melding is nu een link -- op Android een
+  `intent://`-link die Chrome/Edge rechtstreeks opent (met de Play Store als
+  terugval als de app niet geïnstalleerd is), op iOS de App Store-pagina van
+  Bluefy (`id1492822055`, geverifieerd via websearch, niet gegokt), op
+  desktop de officiële download-pagina's van chrome.com/microsoft.com/edge.
+  Gedetecteerd via `navigator.userAgent` (Android/iOS/overig). Getest met 3
+  gesimuleerde user-agents (Android/Firefox, iOS/Safari, Desktop/Firefox) --
+  elk toont exact de juiste, platform-specifieke link.
 - **2026-08-19** (vervolg 3: Meting-kaart knippert, upload-wachtwoord
   "tijn", verplichte velden vóór rapportage, grafiek-verfijningen, alles op
   verzoek, alles in `FAR-500.html`):
@@ -591,3 +643,12 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
   `Access-Control-Allow-Origin`/`Content-Disposition`, content-length klopt
   (35141 bytes) en het resultaat is een geldig zip/XLSX-bestand (`python -m
   zipfile` leest de verwachte onderdelen: `xl/worksheets/sheet1.xml` etc.).
+- **2026-08-19**: `UPLOAD_SECRET` op verzoek gewijzigd naar `tijn` (was het
+  oorspronkelijke willekeurig gegenereerde wachtwoord) via `wrangler secret
+  put UPLOAD_SECRET` (waarde weer non-interactief doorgepiped). Bewust een
+  makkelijk te onthouden, dus ook makkelijker te raden wachtwoord — voor dit
+  doel (laagdrempelig teamslotje op een release met alleen meetdata, geen
+  echte beveiliging) een geaccepteerde afweging. Live getest met een
+  curl-upload (`X-Upload-Secret: tijn`) — 200 OK, asset succesvol
+  aangekomen; het test-asset is daarna weer verwijderd van de release. De UI
+  (`FAR-500.html`, veld `ghSecret`) heeft `tijn` nu als standaardwaarde.

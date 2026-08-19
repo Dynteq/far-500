@@ -279,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 15:37</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 16:02</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -762,6 +762,10 @@ $("btnOldMeasLoad").onclick=async()=>{
     samples=loaded;
     $("naam").value=metaStr(meta,"Naam (Merk/Type)",1);
     $("notities").value=metaStr(meta,"Notities (Positie/Belasting)",1);
+    // .value zetten triggert geen "input"-event, dus zonder deze aanroep
+    // bleef de Meting-kaart knipperen (needs-fill-status) tot de gebruiker
+    // handmatig een letter wijzigde.
+    updateMetingBlink();
     loadedMeasMeta={datumStr: metaStr(meta,"Datum/tijd meting",1)};
 
     geo.yHigh=metaNum(meta,"Handvat hoog (cm)",1); geo.angHigh=metaNum(meta,"Handvat hoog (cm)",3);
@@ -1036,14 +1040,20 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   const degForHeight=target=>{ if(L==null||Hh==null) return null; const s=(Hh-target)/L;
     if(s<-1||s>1) return null; return Math.asin(s)/D2R; };
 
-  // Bepaal de (eerste) omhoog- en omlaaggaande beweging -- gebruikt voor
-  // zowel het oranje breakaway-kader hieronder als de afstand-tickmarks
-  // verderop.
+  // Bepaal de GROOTSTE omhoog- en omlaaggaande beweging (grootste
+  // cirkelbaanlengte, niet zomaar de eerste) -- gebruikt voor het oranje
+  // breakaway-kader, de afstand-tickmarks én de "omhoog"/"omlaag"-labels
+  // verderop. De eerste beweging in res.moves is bij ruis op een echte
+  // meting soms een klein, niet-representatief blipje vóór de eigenlijke
+  // sweep -- de grootste beweging is altijd de bedoelde hoofdbeweging.
   const th0=n?series.angle_deg[0]*D2R:0;
   let upMove=null, downMove=null;
   if(L!=null && res && res.moves){
-    upMove=res.moves.find(m=>m.direction==="up")||null;
-    downMove=res.moves.find(m=>m.direction==="down")||null;
+    const pickLargest=dir=>res.moves.filter(m=>m.direction===dir)
+      .reduce((best,m)=>{ const span=Math.abs(series.arc_cm[m.end]-series.arc_cm[m.start]);
+        return (!best||span>best.span)?{move:m,span}:best; }, null);
+    upMove=(pickLargest("up")||{}).move||null;
+    downMove=(pickLargest("down")||{}).move||null;
   }
   // Breakaway-marge (150%) kader: alleen tekenen als de kracht ergens in de
   // beweging minstens 50% van de bedienkracht (regio-afhankelijke basis
@@ -1110,10 +1120,11 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     }
   }
 
-  // ---- krachtraster: dunne horizontale lijnen + labels bij ±85/±100/±140/
-  // ±210N (op verzoek, referentiewaarden voor de norm/breakaway-marge) ----
+  // ---- krachtraster: dunne horizontale lijnen + labels bij ±85/±140/±210N
+  // (op verzoek, referentiewaarden voor de norm/breakaway-marge -- ±100N is
+  // weer verwijderd, gaf te veel drukte samen met de nabije ±85N-lijn) ----
   ctx.textAlign="left"; ctx.font=AFtick+"px sans-serif";
-  [85,100,140,210].forEach(fN=>{
+  [85,140,210].forEach(fN=>{
     [fN,-fN].forEach(v=>{
       const py2=Y(v);
       ctx.strokeStyle="rgba(0,0,0,0.25)"; ctx.lineWidth=1;
@@ -1256,12 +1267,18 @@ function buildAnalyseReportCanvas(){
   // (30% boven de al 1.5x'e 600px) te behouden.
   const CHART_AXIS_FONT=38;
   const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*5);
-  const H = PAD + 75 + 75 + 65 + 65 + 50
-    + 60 + 7*lineH + 40
-    + 60 + critLines.length*lineH + 40
-    + 60 + 60 + 4*lineH + 40
-    + 125 + 50
-    + 60 + CHART_H + PAD;
+
+  // Op verzoek: de uitgebreide criteria-uitleg staat nu op pagina 2 (bij de
+  // grafiek), en de Uitkomst-tabel + eindoordeel vormen de onderste helft
+  // van pagina 1 (titel/metadata/setup vormen de bovenste helft). Metadata
+  // (naam/notities/datum) staat voortaan compact op 1 regel i.p.v. 3 losse
+  // regels -- met die besparing komen beide helften van pagina 1 toevallig
+  // vrijwel exact op dezelfde hoogte uit (570px elk), dus geen kunstmatige
+  // opvulling nodig.
+  const TOP_BLOCK_H = 60 + 70 + 75 + 15 + 7*lineH;                 // titel + metadata-regel + "Setup" + 7 rijen
+  const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+125 + 30;   // "Uitkomst" + kop + 4 rijen + eindoordeel
+  const critBlockH = 40+60 + 15 + critLines.length*lineH;          // "Criteria" + regels (nu op pagina 2)
+  const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + critBlockH + 50+60+20 + CHART_H + PAD;
 
   const canvas=document.createElement("canvas");
   canvas.width=W; canvas.height=Math.round(H);
@@ -1269,10 +1286,14 @@ function buildAnalyseReportCanvas(){
   ctx.fillStyle="#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle="#111";
   let y=PAD;
+
+  // ---- Bovenste helft van pagina 1: titel + compacte metadata + setup ----
   ctx.font="bold 60px sans-serif"; ctx.fillText("FAR-500 — bedienkracht-analyse", PAD, y+=60);
-  ctx.font="35px sans-serif"; y+=65; ctx.fillText($("naam").value||"(naam onbekend)", PAD, y);
-  if($("notities").value){ y+=55; ctx.fillText($("notities").value, PAD, y); }
-  y+=55; ctx.fillText(loadedMeasMeta?loadedMeasMeta.datumStr:(measStart||new Date()).toLocaleString('nl-NL'), PAD, y);
+  ctx.font="35px sans-serif"; y+=70;
+  const metaParts=[$("naam").value||"(naam onbekend)"];
+  if($("notities").value) metaParts.push($("notities").value);
+  metaParts.push(loadedMeasMeta?loadedMeasMeta.datumStr:(measStart||new Date()).toLocaleString('nl-NL'));
+  ctx.fillText(metaParts.join("   —   "), PAD, y);
   y+=75;
   ctx.font="bold 40px sans-serif"; ctx.fillText("Setup", PAD, y); y+=15;
   ctx.font="33px sans-serif";
@@ -1287,9 +1308,8 @@ function buildAnalyseReportCanvas(){
     ["Max versnelling (cm/s2)", limitsOn()?naText(parseFloat($("amax").value)):"(default "+DEFAULT_AMAX+")"],
   ];
   setupRows.forEach(([lbl,val])=>{ y+=lineH; ctx.fillText(lbl+":", PAD, y); ctx.fillText(String(val), PAD+900, y); });
-  y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=15;
-  ctx.font="31px sans-serif";
-  critLines.forEach(l=>{ y+=lineH; ctx.fillText(l, PAD, y); });
+
+  // ---- Onderste helft van pagina 1: Uitkomst-tabel + eindoordeel ----
   y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Uitkomst", PAD, y); y+=15;
   y+=60; ctx.font="bold 33px sans-serif";
   ctx.fillText("Criterium",PAD,y); ctx.fillText("Resultaat",PAD+225,y); ctx.fillText("Onderbouwing",PAD+550,y);
@@ -1305,12 +1325,15 @@ function buildAnalyseReportCanvas(){
   ctx.fillStyle=passAll?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD,y-80,1400,105);
   ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 65px sans-serif";
   ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+25, y-10);
-  // Splitpunt voor de PDF: tekst/setup/criteria/uitkomst op pagina 1, de
-  // titel+grafiek (hierna) op een eigen pagina 2 -- zie buildAnalysisPdfBlob().
-  // Nodig omdat 2.5x grotere tekst + een 30% hogere grafiek niet meer samen
-  // op één A4-portrait-pagina passen zonder dat de grafiek de paginabreedte
-  // niet meer zou vullen (te hoog/smal beeld anders).
+  // Splitpunt voor de PDF: titel/metadata/setup/uitkomst/eindoordeel op
+  // pagina 1, de criteria-uitleg + grafiek (hierna) op pagina 2 -- zie
+  // buildAnalysisPdfBlob().
   const chartTop=y+30;
+
+  // ---- Pagina 2: uitgebreide criteria-uitleg + grafiek ----
+  y=chartTop; y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=15;
+  ctx.font="31px sans-serif";
+  critLines.forEach(l=>{ y+=lineH; ctx.fillText(l, PAD, y); });
   y+=50+60;
   ctx.fillStyle="#111"; ctx.font="bold 35px sans-serif";
   ctx.fillText("Kracht vs. hoek  —  groen: toegestaan | oranje: 150%-breakaway-marge (eerste 20cm) | rood: afkeur (buiten envelope of >170cm hoogte)", PAD, y); y+=20;
@@ -1738,10 +1761,32 @@ updateMetingBlink();
   let standard=true; try{ const v=localStorage.getItem("far500mode"); if(v) standard=v==="advanced"?false:true; }catch(e){}
   apply(standard);
 })();
+// Elke genoemde browser/app is nu een link: op Android een "intent://"-link
+// die de app rechtstreeks opent als die al ge\u00efnstalleerd is (met de Play
+// Store als terugval als dat niet zo is), op iOS de App Store-pagina van
+// Bluefy, en op desktop de offici\u00eble download-pagina van Chrome/Edge.
 (function(){ const c=document.getElementById("compat");
   if(!navigator.bluetooth){ c.className="compat bad";
-    c.innerHTML="&#9888; Deze browser ondersteunt geen Web Bluetooth. Gebruik <b>Chrome</b> of <b>Edge</b> (desktop of Android). "+
-      "<b>Firefox</b> en <b>Safari/iOS</b> werken niet \u2014 op iPhone/iPad kan het via de app <b>Bluefy</b>.";
+    const ua=navigator.userAgent||"";
+    const isAndroid=/Android/i.test(ua);
+    const isIOS=/iPad|iPhone|iPod/.test(ua) || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
+    const hostPath=location.host+location.pathname;
+    const intentUrl=pkg=>"intent://"+hostPath+"#Intent;scheme=https;package="+pkg+
+      ";S.browser_fallback_url="+encodeURIComponent("https://play.google.com/store/apps/details?id="+pkg)+";end";
+    let html="&#9888; Deze browser ondersteunt geen Web Bluetooth. ";
+    if(isAndroid){
+      html+="Open deze pagina in <a href=\""+intentUrl("com.android.chrome")+"\"><b>Chrome</b></a> of "+
+        "<a href=\""+intentUrl("com.microsoft.emmx")+"\"><b>Edge</b></a> "+
+        "(opent de app direct als die al ge\u00efnstalleerd is, anders de Play Store om 'm te installeren).";
+    } else if(isIOS){
+      html+="<b>Safari</b> en <b>Firefox</b> ondersteunen dit niet op iOS. Gebruik de app "+
+        "<a href=\"https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055\" target=\"_blank\" rel=\"noopener\"><b>Bluefy</b></a> "+
+        "(opent de App Store om 'm te installeren of te openen).";
+    } else {
+      html+="Gebruik <a href=\"https://www.google.com/chrome/\" target=\"_blank\" rel=\"noopener\"><b>Chrome</b></a> of "+
+        "<a href=\"https://www.microsoft.com/edge\" target=\"_blank\" rel=\"noopener\"><b>Edge</b></a> (download).";
+    }
+    c.innerHTML=html;
     const b=document.getElementById("btnConnect"); if(b){ b.disabled=true; b.textContent="Niet ondersteund"; }
   }})();
 </script>
