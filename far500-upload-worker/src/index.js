@@ -12,9 +12,9 @@
 // de browser: de asset-redirect eindigt op release-assets.githubusercontent.com
 // (Azure Blob), en die respons heeft geen Access-Control-Allow-Origin-header
 // (bevestigd met curl -D-) -- dus blokkeert fetch() dat net als bij uploads.
-// Dit endpoint is bewust zonder X-Upload-Secret: het proxyt uitsluitend
-// reeds-publieke assets uit deze ene release (geen vrije URL-doorgifte), dus
-// er lekt niets dat niet al via de GitHub-UI/API voor iedereen zichtbaar is.
+// Vereist sinds 2026-08-19 dezelfde X-Upload-Secret als de upload-kant (op
+// verzoek: zonder de code moeten metingen/rapporten ook niet te openen zijn
+// via de dropdown, niet alleen niet te uploaden).
 
 const OWNER = "dynteq";
 const REPO = "far-500";
@@ -35,6 +35,11 @@ export default {
       if (url.pathname !== "/download") return json({ ok: false, error: "not found" }, 404);
       const name = url.searchParams.get("name") || "";
       if (!name) return json({ ok: false, error: "missing name" }, 400);
+
+      const dlSecret = request.headers.get("X-Upload-Secret") || "";
+      if (!env.UPLOAD_SECRET || dlSecret !== env.UPLOAD_SECRET) {
+        return json({ ok: false, error: "unauthorized" }, 401);
+      }
 
       const ghHeaders = {
         "Authorization": `token ${env.GH_TOKEN}`,

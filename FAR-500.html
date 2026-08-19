@@ -279,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 16:02</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 16:11</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -668,9 +668,12 @@ refreshGhAssets();
 $("btnOldPdfOpen").onclick=async()=>{
   const name=$("oldPdfSelect").value; if(!name) return;
   const status=$("oldPdfStatus"), btn=$("btnOldPdfOpen");
+  const secret=$("ghSecret").value.trim();
+  if(!secret){ status.textContent="Vul eerst de upload-code in (ook nodig om te laden)."; return; }
   btn.disabled=true; status.textContent="bezig met ophalen…";
   try{
-    const res=await fetch(GH_RELAY_URL+"/download?name="+encodeURIComponent(name));
+    const res=await fetch(GH_RELAY_URL+"/download?name="+encodeURIComponent(name),{headers:{"X-Upload-Secret":secret}});
+    if(res.status===401) throw new Error("onjuiste upload-code.");
     if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||("HTTP "+res.status)); }
     const blob=await res.blob();
     download(name, blob, "oldPdfDlFallback");
@@ -750,9 +753,12 @@ function metaStr(meta,label,col){ const row=meta[label]; const v=row?row[col]:un
 $("btnOldMeasLoad").onclick=async()=>{
   const name=$("oldMeasSelect").value; if(!name) return;
   const status=$("oldMeasStatus"), btn=$("btnOldMeasLoad");
+  const secret=$("ghSecret").value.trim();
+  if(!secret){ status.textContent="Vul eerst de upload-code in (ook nodig om te laden)."; return; }
   btn.disabled=true; status.textContent="bezig met laden…";
   try{
-    const res=await fetch(GH_RELAY_URL+"/download?name="+encodeURIComponent(name));
+    const res=await fetch(GH_RELAY_URL+"/download?name="+encodeURIComponent(name),{headers:{"X-Upload-Secret":secret}});
+    if(res.status===401) throw new Error("onjuiste upload-code.");
     if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||("HTTP "+res.status)); }
     const bytes=new Uint8Array(await res.arrayBuffer());
     const {meta, samples:loaded}=parseFarMetingWorkbook(bytes);

@@ -47,6 +47,20 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (vervolg 6: download-proxy nu ook achter de upload-code, op
+  verzoek): `GET /download?name=` in `far500-upload-worker/src/index.js`
+  vereist sinds nu dezelfde `X-Upload-Secret` als de upload-kant (was bewust
+  publiek sinds 2026-08-11, zie het "Deploy-log" hieronder voor de reden
+  destijds) -- zonder de code kan je dus ook geen oude meting/PDF meer laden
+  via de dropdowns, niet alleen niet uploaden. **Gedeployed** (`npx wrangler
+  deploy`, versie-ID `33ff3966-7a5c-475d-9d26-b773dc1612d0`) en **live
+  bevestigd met curl**: zonder code 401, met verkeerde code 401, met `tijn`
+  200. `FAR-500.html` (`btnOldMeasLoad`/`btnOldPdfOpen`) stuurt de code nu
+  mee als header en toont een duidelijke melding ("vul eerst de upload-code
+  in" resp. "onjuiste upload-code") i.p.v. de aanroep te doen of een cryptische
+  fout te tonen. `far500-upload-worker/README.md` bijgewerkt. Getest met
+  jsdom (geen fetch zonder code, 401-melding bij verkeerde code, juiste
+  header bij correcte code).
 - **2026-08-19** (vervolg 5: 2 bugfixes + grafiek/PDF-verfijningen, op
   verzoek, alles in `FAR-500.html`):
   - **Bugfix "Meting"-kaart blijft knipperen na laden oude meting**: `.value=`
@@ -604,6 +618,12 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
 - Geef eerst een plan voordat je grote wijzigingen maakt.
 - Pas bestaande architectuur niet aan zonder overleg.
 - Houdt bij hoe (via welke COM-poort en software instellingen) je succesvol de firmware geupload hebt (in dit document CLAUDE.md)
+- **Na elke `git push` van `FAR-500.html` naar `master`**: altijd controleren
+  (bv. `curl -s https://dynteq.github.io/far-500/FAR-500.html | grep "build"`
+  tegen het nieuwe buildstamp, zo nodig even pollen tot GitHub Pages bijgewerkt
+  is) of de live pagina de nieuwe versie toont, en dat pas terugmelden aan de
+  gebruiker -- niet alleen "gepusht" melden zonder te bevestigen dat 'm ook
+  echt live staat.
 
 ## Naamgeving
 - Project/device heet **FAR-500** (BLE naam, OLED-tekst, UI). Let op: "Sauter FH 500" in de architectuurbeschrijving is de naam van het externe krachtmeetinstrument (UART-bron) en is dus NIET hernoemd.

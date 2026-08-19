@@ -11,8 +11,9 @@ laden"-dropdown in de UI). Ook dat kan niet rechtstreeks vanuit de browser —
 de asset-download redirect eindigt op `release-assets.githubusercontent.com`
 (Azure Blob), en die respons stuurt geen `Access-Control-Allow-Origin` mee
 (bevestigd met `curl -D-`), dus blokkeert de browser het lezen ervan net als
-bij uploads. Dit endpoint vereist bewust geen `X-Upload-Secret` — het geeft
-alleen assets terug die al publiek in deze ene release staan.
+bij uploads. Sinds 2026-08-19 vereist dit endpoint dezelfde `X-Upload-Secret`
+als de upload-kant (op verzoek: zonder de code moet je metingen/rapporten
+ook niet kunnen openen/laden, niet alleen niet kunnen uploaden).
 
 ## Deployen
 
@@ -52,7 +53,8 @@ curl -X POST https://far500-upload-worker.<jouw-subdomain>.workers.dev \
 Verwacht een JSON-antwoord `{"ok":true,"url":"..."}` en een nieuwe asset onder
 [Releases](https://github.com/dynteq/far-500/releases/tag/recordings).
 
-Download-proxy testen:
+Download-proxy testen (vereist dezelfde `X-Upload-Secret` als de upload):
 ```
-curl -o test.xlsx "https://far500-upload-worker.<jouw-subdomain>.workers.dev/download?name=<bestandsnaam>.xlsx"
+curl -H "X-Upload-Secret: <jouw-secret>" \
+  -o test.xlsx "https://far500-upload-worker.<jouw-subdomain>.workers.dev/download?name=<bestandsnaam>.xlsx"
 ```
