@@ -47,6 +47,35 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (vervolg 7: oranje-kader/tickmarks-nulpunt gelijk getrokken +
+  PDF-paginavolgorde definitief, alles op verzoek, alles in `FAR-500.html`):
+  - **Oranje kader "iets breder dan 0-20cm" opgehelderd**: geen bug in de
+    ánder — de breedte was al exact 20cm cirkelbaanlengte (geverifieerd met
+    een test: 130-131px versus theoretisch 130,3px). Het kwam door een
+    verschillend nulpunt: het kader startte bij het 50%-kruispunt, de
+    tickmarks bij de start van de beweging. Gebruiker koos: nulpunt van het
+    kader is leidend, dus de 0/10/20cm-tickmarks (`drawArcTicks()`) gebruiken
+    nu ook `upCross`/`downCross` (het 50%-kruispunt) i.p.v. `move.arcStart`.
+    Bevestigd: linkerrand kader en "0cm↑"-tick vallen nu exact samen.
+  - **Extra labels**: "handvathoogte" bij de 135/170cm-markers (zelfde
+    lettertype), en groene onderschriften bij de tickmarks: "afgelegde
+    afstand handvat start beweging omhoog →" (boven) / "...← omlaag" (onder).
+  - **"omhoog"/"omlaag"-labels op de meetlijn**: omhoog nu bij -15° met tekst
+    "omhoog →" (blijft boven de lijn), omlaag nu bij -30° met tekst
+    "← omlaag" (nu altijd ONDER de lijn, niet meer conditioneel).
+  - **PDF-paginavolgorde definitief**: de grafiek staat nu volledig op
+    pagina 1 (direct na titel/metadata/setup/Uitkomst-tabel/eindoordeel) --
+    niet meer tussen eindoordeel en criteria. De uitgebreide criteria-uitleg
+    is een eigen blok dat altijd op pagina 2 komt, zonder dat daar nog een
+    stukje grafiek zichtbaar is (`chartTop` is nu het einde van de grafiek
+    i.p.v. het begin). Beide pagina's blijven de paginabreedte vullen
+    (bevestigd: `tx≈24pt`op beide).
+  - **Getest**: `node --check`, en jsdom-smoketests (breedte-/nulpunt-
+    verificatie van het oranje kader t.o.v. de tickmarks met een gerichte
+    px-berekening, aanwezigheid/tekst van de nieuwe labels, positie en
+    boven/onder-plaatsing van de omhoog/omlaag-labels, en de volledige
+    2-pagina-PDF-volgorde inclusief dat beide pagina's breedte-vullend
+    blijven). **Niet visueel gecontroleerd** in een echte browser/PDF-viewer.
 - **2026-08-19** (vervolg 6: download-proxy nu ook achter de upload-code, op
   verzoek): `GET /download?name=` in `far500-upload-worker/src/index.js`
   vereist sinds nu dezelfde `X-Upload-Secret` als de upload-kant (was bewust

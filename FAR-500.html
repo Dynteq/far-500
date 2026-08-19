@@ -279,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 16:11</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 16:34</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -1150,7 +1150,8 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     ctx.fillStyle="#333"; ctx.fillText(deg.toFixed(0)+"°", px, py+ph+Math.round(AF*1.33));
   }
 
-  // ---- handvathoogte-as bovenaan: dikke streep + label bij 135 en 170 cm ----
+  // ---- handvathoogte-as bovenaan: dikke streep + label bij 135 en 170 cm,
+  // plus een "handvathoogte"-onderschrift in hetzelfde lettertype ----
   [[CRIT.H_THRESH,CRIT.H_THRESH.toFixed(0)+" cm"],[CRIT.H_MAX,CRIT.H_MAX.toFixed(0)+" cm"]].forEach(([htgt,label])=>{
     const deg=degForHeight(htgt);
     if(deg==null||deg<ANGLE_MIN||deg>ANGLE_MAX) return;
@@ -1161,17 +1162,21 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     ctx.fillText(label, px, py-Math.round(AF*1.1));
     ctx.font=AF+"px sans-serif";
   });
+  ctx.textAlign="right"; ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
+  ctx.fillText("handvathoogte", x+w-4, py-Math.round(AF*1.1));
+  ctx.textAlign="left";
 
   // ---- afgelegde afstand op de cirkelbaan: korte streepjes op 0/10/20 cm
-  // vanaf de start van de omhoog- resp. omlaaggaande beweging (elk vanaf
-  // zijn eigen startpunt, dus twee onafhankelijke 0-punten). Op verzoek: de
-  // omhoog-tickmarks staan BOVENAAN de grafiek (bij de top-as), de omlaag-
-  // tickmarks blijven vlak BOVEN de onderste (hoek-)as. ----
+  // vanaf het 50%-breakaway-kruispunt van de omhoog- resp. omlaaggaande
+  // beweging -- ZELFDE nulpunt als het oranje breakaway-kader hierboven (op
+  // verzoek, anders liepen kader en tickmarks niet meer gelijk). Omhoog-
+  // tickmarks staan bovenaan de grafiek, omlaag-tickmarks vlak boven de
+  // onderste (hoek-)as, elk met een groen onderschrift. ----
   if(L!=null && (upMove || downMove)){
-    const drawArcTicks=(move,sign,arrow,atTop)=>{
-      if(!move) return;
+    const drawArcTicks=(move,cross,sign,arrow,atTop)=>{
+      if(!move||cross==null) return;
       [0,10,20].forEach(d=>{
-        const arc=move.arcStart+sign*d;
+        const arc=cross+sign*d;
         const deg=(th0-arc/L)/D2R;
         if(deg<ANGLE_MIN||deg>ANGLE_MAX) return;
         const px=X(deg);
@@ -1186,8 +1191,11 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
         }
       });
     };
-    drawArcTicks(upMove,1,"↑",true);
-    drawArcTicks(downMove,-1,"↓",false);
+    drawArcTicks(upMove,upCross,1,"↑",true);
+    drawArcTicks(downMove,downCross,-1,"↓",false);
+    ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="right";
+    if(upMove&&upCross!=null) ctx.fillText("afgelegde afstand handvat start beweging omhoog →", x+w-4, py-Math.round(AF*0.25));
+    if(downMove&&downCross!=null) ctx.fillText("afgelegde afstand handvat start beweging ← omlaag", x+w-4, py+ph+Math.round(AF*2.8));
   }
   ctx.textAlign="left";
 
@@ -1210,11 +1218,12 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     ctx.fillStyle=bad?"#CC0000":"#00b4ce";
     ctx.beginPath(); ctx.arc(X(deg),Y(N), bad?3.4:2.2, 0, 7); ctx.fill(); }
 
-  // ---- "omhoog"/"omlaag"-labels, verbonden aan de meetlijn: rond -30°
-  // (binnen de omhooggaande beweging) resp. -15° (omlaaggaande beweging) --
+  // ---- "omhoog"/"omlaag"-labels, verbonden aan de meetlijn: "omhoog →" bij
+  // -15° (binnen de omhooggaande beweging, boven de lijn), "← omlaag" bij
+  // -30° (omlaaggaande beweging, altijd ONDER de lijn, op verzoek) --
   // gezocht wordt het dichtstbijzijnde sample bínnen die beweging, het label
   // wordt met een kort streepje aan dat punt op de lijn "vastgemaakt". ----
-  function labelOnMove(move,targetDeg,txt){
+  function labelOnMove(move,targetDeg,txt,forceBelow){
     if(!move) return;
     let bestI=-1, bestD=Infinity;
     for(let i=move.start;i<=move.end;i++){ const deg=series.angle_deg[i];
@@ -1224,15 +1233,15 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     const deg=series.angle_deg[bestI], N=series.force_N[bestI];
     if(N===""||isNaN(N)) return;
     const px=X(deg), py2=Y(N);
-    const above=(py2-py)>AF*2.7;   // genoeg ruimte boven het punt? anders label onder het punt
+    const above=forceBelow?false:(py2-py)>AF*2.7;   // genoeg ruimte boven het punt? anders label onder het punt
     ctx.fillStyle="#333"; ctx.beginPath(); ctx.arc(px,py2,3.6,0,7); ctx.fill();
     ctx.strokeStyle="#333"; ctx.lineWidth=1.4; ctx.beginPath();
     ctx.moveTo(px,py2); ctx.lineTo(px, above?py2-Math.round(AF*1.2):py2+Math.round(AF*1.2)); ctx.stroke();
     ctx.textAlign="center"; ctx.font="bold "+(AF+1)+"px sans-serif";
     ctx.fillText(txt, px, above?py2-Math.round(AF*1.47):py2+Math.round(AF*2));
   }
-  labelOnMove(upMove,-35,"omhoog");    // omhoog = altijd positieve trekkracht -> de bovenste curve
-  labelOnMove(downMove,-15,"omlaag");  // omlaag = kost altijd minder trekkracht dan omhoog -> de onderste curve
+  labelOnMove(upMove,-15,"omhoog →");            // omhoog = altijd positieve trekkracht -> de bovenste curve
+  labelOnMove(downMove,-30,"← omlaag",true);     // omlaag = kost altijd minder trekkracht dan omhoog -> de onderste curve, altijd ONDER de lijn
   ctx.textAlign="left";
 
   // ---- kader + assen-labels ----
@@ -1274,17 +1283,18 @@ function buildAnalyseReportCanvas(){
   const CHART_AXIS_FONT=38;
   const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*5);
 
-  // Op verzoek: de uitgebreide criteria-uitleg staat nu op pagina 2 (bij de
-  // grafiek), en de Uitkomst-tabel + eindoordeel vormen de onderste helft
-  // van pagina 1 (titel/metadata/setup vormen de bovenste helft). Metadata
-  // (naam/notities/datum) staat voortaan compact op 1 regel i.p.v. 3 losse
-  // regels -- met die besparing komen beide helften van pagina 1 toevallig
-  // vrijwel exact op dezelfde hoogte uit (570px elk), dus geen kunstmatige
-  // opvulling nodig.
+  // Op verzoek: de grafiek staat nu volledig op PAGINA 1, direct ná de
+  // titel/metadata/setup/Uitkomst-tabel/eindoordeel (geen criteria-tekst
+  // meer tussen eindoordeel en grafiek). De uitgebreide criteria-uitleg
+  // komt daarna als eigen blok, altijd op pagina 2 -- en omdat de grafiek
+  // daar dan al "op" is (pagina 1 volledig gevuld), staat er op pagina 2
+  // nooit een grafiek. Metadata (naam/notities/datum) staat compact op 1
+  // regel i.p.v. 3 losse regels.
   const TOP_BLOCK_H = 60 + 70 + 75 + 15 + 7*lineH;                 // titel + metadata-regel + "Setup" + 7 rijen
-  const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+125 + 30;   // "Uitkomst" + kop + 4 rijen + eindoordeel
-  const critBlockH = 40+60 + 15 + critLines.length*lineH;          // "Criteria" + regels (nu op pagina 2)
-  const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + critBlockH + 50+60+20 + CHART_H + PAD;
+  const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+125;        // "Uitkomst" + kop + 4 rijen + eindoordeel
+  const CHART_TITLE_GAP = 50+60+20;                                // ruimte + titelregel vóór de grafiek
+  const critBlockH = 40+60 + 15 + critLines.length*lineH;          // "Criteria" + regels (pagina 2)
+  const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + CHART_TITLE_GAP + CHART_H + 40 + critBlockH + PAD;
 
   const canvas=document.createElement("canvas");
   canvas.width=W; canvas.height=Math.round(H);
@@ -1331,19 +1341,24 @@ function buildAnalyseReportCanvas(){
   ctx.fillStyle=passAll?"#C6EFCE":"#FFC7CE"; ctx.fillRect(PAD,y-80,1400,105);
   ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 65px sans-serif";
   ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+25, y-10);
-  // Splitpunt voor de PDF: titel/metadata/setup/uitkomst/eindoordeel op
-  // pagina 1, de criteria-uitleg + grafiek (hierna) op pagina 2 -- zie
-  // buildAnalysisPdfBlob().
-  const chartTop=y+30;
 
-  // ---- Pagina 2: uitgebreide criteria-uitleg + grafiek ----
-  y=chartTop; y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=15;
-  ctx.font="31px sans-serif";
-  critLines.forEach(l=>{ y+=lineH; ctx.fillText(l, PAD, y); });
+  // ---- Grafiek (nog steeds pagina 1, direct na het eindoordeel) ----
   y+=50+60;
   ctx.fillStyle="#111"; ctx.font="bold 35px sans-serif";
   ctx.fillText("Kracht vs. hoek  —  groen: toegestaan | oranje: 150%-breakaway-marge (eerste 20cm) | rood: afkeur (buiten envelope of >170cm hoogte)", PAD, y); y+=20;
   drawAngleForceChart(ctx, PAD, y, W-2*PAD, CHART_H, series, res, CHART_AXIS_FONT);
+  y+=CHART_H;
+
+  // Splitpunt voor de PDF: titel/metadata/setup/uitkomst/eindoordeel/grafiek
+  // staan samen op pagina 1; de criteria-uitleg (hierna) komt altijd op
+  // pagina 2, zonder dat de grafiek daar nog zichtbaar is -- zie
+  // buildAnalysisPdfBlob().
+  const chartTop=y+40;
+
+  // ---- Pagina 2: uitgebreide criteria-uitleg (geen grafiek meer) ----
+  y=chartTop; y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=15;
+  ctx.font="31px sans-serif";
+  critLines.forEach(l=>{ y+=lineH; ctx.fillText(l, PAD, y); });
   return {canvas, series, res, chartTop};
 }
 async function canvasToJpegBytes(canvas,quality){
