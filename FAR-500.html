@@ -79,6 +79,9 @@
   .collapsible.open{max-height:160px;opacity:1}
 
   body.standard .adv-only{display:none !important}
+  .buildstamp{position:fixed;right:8px;bottom:6px;z-index:80;font-family:var(--mono);font-size:10px;
+              color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:5px;
+              padding:2px 7px;opacity:.85;pointer-events:none}
   .compat{display:none}
   .compat.bad{display:block;background:rgba(229,86,75,.15);border-bottom:1px solid var(--bad);
               color:#ffd0cc;padding:11px 22px;font-size:13px;line-height:1.5}
@@ -154,6 +157,9 @@
 
     <div class="card adv-only">
       <h3>Oude meting laden (GitHub)</h3>
+      <div class="hint" style="margin-bottom:10px">
+        <a href="https://github.com/dynteq/far-500/releases/tag/recordings" target="_blank" rel="noopener" style="color:var(--cyan)">Alle bestanden bekijken op GitHub →</a>
+      </div>
       <div class="field wide">
         <select id="oldMeasSelect" style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
           <option value="">— lijst wordt opgehaald… —</option>
@@ -162,6 +168,15 @@
       </div>
       <button id="btnOldMeasLoad" class="wide" disabled>Laden in het analyse-scherm</button>
       <div class="hint" id="oldMeasStatus"></div>
+
+      <div class="field wide" style="margin-top:14px">
+        <select id="oldPdfSelect" style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
+          <option value="">— lijst wordt opgehaald… —</option>
+        </select>
+      </div>
+      <button id="btnOldPdfOpen" class="wide" disabled>PDF-rapport openen/downloaden</button>
+      <div class="hint" id="oldPdfStatus"></div>
+      <div class="hint" id="oldPdfDlFallback"></div>
     </div>
 
     <div class="card adv-only">
@@ -169,12 +184,22 @@
       <div class="field">
         <label>Handvat HOOG (cm)</label>
         <input id="yHigh" class="num" type="number" step="0.1" placeholder="hoogte">
-        <button id="capHigh">Vastleggen</button><span class="cap" id="angHigh">—</span>
+        <button id="capHigh">Huidige positie vastleggen</button><span class="cap" id="angHigh">—</span>
       </div>
       <div class="field">
         <label>Handvat LAAG (cm)</label>
         <input id="yLow" class="num" type="number" step="0.1" placeholder="hoogte">
-        <button id="capLow">Vastleggen</button><span class="cap" id="angLow">—</span>
+        <button id="capLow">Huidige positie vastleggen</button><span class="cap" id="angLow">—</span>
+      </div>
+      <div class="hint" style="margin:2px 0 8px">Geen live hoek beschikbaar (bv. na het laden van een oude meting waarbij de hoek niet is vastgelegd)? Vul de hoek handmatig in en klik op "Overschrijf posities".</div>
+      <div class="field">
+        <label>Hoek HOOG (deg, hand.)</label>
+        <input id="angHighManual" class="num" type="number" step="0.1" value="1.0">
+      </div>
+      <div class="field">
+        <label>Hoek LAAG (deg, hand.)</label>
+        <input id="angLowManual" class="num" type="number" step="0.1" value="-46.0">
+        <button id="btnOverridePositions">Overschrijf posities</button>
       </div>
       <div class="calc"><span>H berekend</span><b id="valH">—</b></div>
       <div class="calc"><span>L berekend</span><b id="valL">—</b></div>
@@ -233,6 +258,11 @@
     </div>
   </section>
 </main>
+
+<!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
+     kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
+     Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 12:55</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -349,6 +379,21 @@ $("capLow").onclick=()=>{ const y=parseFloat($("yLow").value);
   if(isNaN(y)){alert("Vul eerst handvathoogte LAAG in.");return;}
   if(isNaN(liveAngle)){alert("Geen live hoek.");return;}
   geo.yLow=y; geo.angLow=liveAngle; $("angLow").textContent=liveAngle.toFixed(1)+"°"; computeGeo(); };
+// Handmatige hoek-invoer -- nodig als een oude meting is geladen waarbij de
+// handvathoogtes wél zijn vastgelegd (yHigh/yLow) maar de bijbehorende hoeken
+// niet (bv. een export van vóór deze functie), waardoor de cirkelbaan
+// (L/H) niet berekend kan worden. Overschrijft geo.angHigh/angLow (en, voor
+// het geval de hoogtevelden nog niet in geo stonden, ook geo.yHigh/yLow) met
+// de handmatig ingevoerde waarden en herberekent L/H.
+$("btnOverridePositions").onclick=()=>{
+  const yH=parseFloat($("yHigh").value), yL=parseFloat($("yLow").value);
+  const aH=parseFloat($("angHighManual").value), aL=parseFloat($("angLowManual").value);
+  if(isNaN(yH)||isNaN(yL)){ alert("Vul eerst beide handvathoogtes (HOOG/LAAG) in."); return; }
+  if(isNaN(aH)||isNaN(aL)){ alert("Vul beide hoeken in."); return; }
+  geo.yHigh=yH; geo.angHigh=aH; $("angHigh").textContent=aH.toFixed(1)+"°";
+  geo.yLow=yL; geo.angLow=aL; $("angLow").textContent=aL.toFixed(1)+"°";
+  computeGeo();
+};
 ["Hman","Lman"].forEach(id=>$(id).addEventListener("input",()=>{ const v=parseFloat($(id).value);
   geo[id]=isNaN(v)?null:v; analyze(); redraw(); }));
 ["vmax","amax"].forEach(id=>$(id).addEventListener("input",()=>{ analyze(); redraw(); }));
@@ -510,27 +555,58 @@ $("btnHistXlsxGh").onclick=()=>{ if(!measHistory.length) return; const f=buildHi
 // bestandsinhoud zelf NIET: de asset-download redirect eindigt op
 // release-assets.githubusercontent.com (Azure Blob) zonder CORS-header --
 // vandaar de "/download"-proxy op dezelfde Worker die de uploads al deed.
-const GH_LIST_URL="https://api.github.com/repos/DynteqBV/far-500/releases/tags/recordings";
+const GH_LIST_URL="https://api.github.com/repos/dynteq/far-500/releases/tags/recordings";
 let loadedMeasMeta=null;   // {datumStr} als de huidige samples uit een geladen oud bestand komen (i.p.v. een live meting)
 
-async function refreshOldMeasurementList(){
+// Eén release-fetch, gebruikt voor twee dropdowns: .xlsx-metingen (laden in
+// het analyse-scherm) en .pdf-rapporten (al eerder gegenereerd, alleen
+// openen/downloaden). Rapportage-xlsx (*_rapport.xlsx) en geschiedenis-xlsx
+// (*_geschiedenis.xlsx) staan qua extensie ook nog bij de metingenlijst -- die
+// missen simpelweg de t_s-datatabel op sheet1 en geven bij laden een duidelijke
+// foutmelding i.p.v. te crashen (zie parseFarMetingWorkbook()).
+async function refreshGhAssets(){
   const sel=$("oldMeasSelect"), status=$("oldMeasStatus");
+  const pdfSel=$("oldPdfSelect"), pdfStatus=$("oldPdfStatus");
   sel.innerHTML='<option value="">— lijst wordt opgehaald… —</option>'; sel.disabled=true; $("btnOldMeasLoad").disabled=true;
-  status.textContent="";
+  pdfSel.innerHTML='<option value="">— lijst wordt opgehaald… —</option>'; pdfSel.disabled=true; $("btnOldPdfOpen").disabled=true;
+  status.textContent=""; pdfStatus.textContent="";
   try{
     const res=await fetch(GH_LIST_URL);
     if(!res.ok) throw new Error("HTTP "+res.status);
     const data=await res.json();
     const assets=(data.assets||[]).slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-    sel.innerHTML='<option value="">— kies een meting ('+assets.length+') —</option>'+
-      assets.map(a=>'<option value="'+a.name.replace(/"/g,"&quot;")+'">'+a.name+' ('+(a.size/1024).toFixed(0)+' KB)</option>').join("");
-    if(!assets.length) status.textContent="Nog geen metingen gevonden onder de recordings-release.";
-  }catch(e){ sel.innerHTML='<option value="">— ophalen mislukt —</option>'; status.textContent="Lijst ophalen mislukt: "+e.message; }
-  finally{ sel.disabled=false; }
+    const xlsxAssets=assets.filter(a=>/\.xlsx$/i.test(a.name));
+    const pdfAssets=assets.filter(a=>/\.pdf$/i.test(a.name));
+    sel.innerHTML='<option value="">— kies een meting ('+xlsxAssets.length+') —</option>'+
+      xlsxAssets.map(a=>'<option value="'+a.name.replace(/"/g,"&quot;")+'">'+a.name+' ('+(a.size/1024).toFixed(0)+' KB)</option>').join("");
+    if(!xlsxAssets.length) status.textContent="Nog geen metingen gevonden onder de recordings-release.";
+    pdfSel.innerHTML='<option value="">— kies een rapport ('+pdfAssets.length+') —</option>'+
+      pdfAssets.map(a=>'<option value="'+a.name.replace(/"/g,"&quot;")+'">'+a.name+' ('+(a.size/1024).toFixed(0)+' KB)</option>').join("");
+    if(!pdfAssets.length) pdfStatus.textContent="Nog geen PDF-rapporten gevonden onder de recordings-release.";
+  }catch(e){
+    sel.innerHTML='<option value="">— ophalen mislukt —</option>'; status.textContent="Lijst ophalen mislukt: "+e.message;
+    pdfSel.innerHTML='<option value="">— ophalen mislukt —</option>'; pdfStatus.textContent="Lijst ophalen mislukt: "+e.message;
+  }
+  finally{ sel.disabled=false; pdfSel.disabled=false; }
 }
-$("btnOldMeasRefresh").onclick=refreshOldMeasurementList;
+$("btnOldMeasRefresh").onclick=refreshGhAssets;
 $("oldMeasSelect").onchange=()=>{ $("btnOldMeasLoad").disabled=!$("oldMeasSelect").value; };
-refreshOldMeasurementList();
+$("oldPdfSelect").onchange=()=>{ $("btnOldPdfOpen").disabled=!$("oldPdfSelect").value; };
+refreshGhAssets();
+
+$("btnOldPdfOpen").onclick=async()=>{
+  const name=$("oldPdfSelect").value; if(!name) return;
+  const status=$("oldPdfStatus"), btn=$("btnOldPdfOpen");
+  btn.disabled=true; status.textContent="bezig met ophalen…";
+  try{
+    const res=await fetch(GH_RELAY_URL+"/download?name="+encodeURIComponent(name));
+    if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||("HTTP "+res.status)); }
+    const blob=await res.blob();
+    download(name, blob, "oldPdfDlFallback");
+    status.textContent="opgehaald: "+name+" — download gestart (zie evt. ook de link hieronder).";
+  }catch(e){ status.textContent="ophalen mislukt: "+e.message; }
+  finally{ btn.disabled=!$("oldPdfSelect").value; }
+};
 
 // Minimale ZIP-lezer: leest uitsluitend bestanden die xlsxWorkbook() hierboven
 // zelf geschreven heeft (ongecomprimeerd, "STORE"-methode) -- geen DEFLATE
@@ -841,30 +917,127 @@ function wrapText(ctx,text,maxWidth){
 // de oude envelope-/hoogte-grafiek gaf niet helemaal verloren gaat. C4 wordt
 // hier bewust niet in meegenomen (A6: geen officiële eis).
 function drawAngleForceChart(ctx,x,y,w,h,series,res){
+  // Layout: [x,y,w,h] is het volledige toegewezen blok. TOPAX/BOTAX reserveren
+  // ruimte voor resp. de handvathoogte-as (boven) en de hoek-as +
+  // afgelegde-afstand-as (onder) rond het eigenlijke plot-rechthoek [x,py,w,ph].
+  const TOPAX=24, BOTAX=54;
+  const py=y+TOPAX, ph=h-TOPAX-BOTAX;
   const n=series.t_s.length;
   const X=d=>x+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*w;
-  const Y=nn=>y+(1-(clamp(nn,FORCE_MIN,FORCE_MAX)-FORCE_MIN)/(FORCE_MAX-FORCE_MIN))*h;
+  const Y=nn=>py+(1-(clamp(nn,FORCE_MIN,FORCE_MAX)-FORCE_MIN)/(FORCE_MAX-FORCE_MIN))*ph;
+
+  const L=Lused(), Hh=Hused();
+  const heightAtDeg=deg=>(L!=null&&Hh!=null)?(Hh-L*Math.sin(deg*D2R)):null;
+  const degForHeight=target=>{ if(L==null||Hh==null) return null; const s=(Hh-target)/L;
+    if(s<-1||s>1) return null; return Math.asin(s)/D2R; };
+
+  // Breakaway-marge (150%) vensters in hoek-ruimte, afgeleid uit res.moves /
+  // anchorArc -- zelfde CRIT.GRACE_ARC/GRACE_FACT als de engine
+  // (runForceCheck/buildEnvelope), dus consistent met welke samples de engine
+  // zelf als "in_grace" markeert (arc_cm is opgebouwd met dezelfde th0-
+  // referentie, dus hoek<->arc-omrekening hier is exact, geen benadering).
+  const th0=n?series.angle_deg[0]*D2R:0;
+  const graceWindows=[];
+  if(L!=null && res && res.moves) res.moves.forEach(mv=>{
+    const sign=mv.direction==="up"?1:-1;
+    const arcA=mv.anchorArc, arcB=mv.anchorArc+sign*CRIT.GRACE_ARC;
+    const thA=th0-arcA/L, thB=th0-arcB/L;
+    graceWindows.push({lo:Math.min(thA,thB)/D2R, hi:Math.max(thA,thB)/D2R});
+  });
+  const inGraceDeg=deg=>graceWindows.some(g=>deg>=g.lo-1e-9&&deg<=g.hi+1e-9);
+
+  // ---- achtergrond: rood (afkeur) overal, met groen (norm, C1/C2) en oranje
+  // (150%-breakaway-marge binnen de eerste 20cm van een beweging) daarover.
+  // Buiten 0..170cm handvathoogte (C3) blijft de kolom volledig rood. ----
+  const steps=Math.max(120,Math.round(w));
+  for(let s=0;s<steps;s++){
+    const deg=ANGLE_MIN+(s+0.5)/steps*(ANGLE_MAX-ANGLE_MIN);
+    const px0=x+s/steps*w, px1=x+(s+1)/steps*w;
+    ctx.fillStyle="rgba(214,63,53,0.16)"; ctx.fillRect(px0,py,px1-px0,ph);
+    const ht=heightAtDeg(deg);
+    if(ht!=null && ht>=0 && ht<=CRIT.H_MAX){
+      const base=ht<CRIT.H_THRESH?CRIT.F_LOW:CRIT.F_HIGH;
+      if(inGraceDeg(deg)){
+        const outer=CRIT.GRACE_FACT*base;
+        ctx.fillStyle="rgba(255,159,67,0.32)";
+        ctx.fillRect(px0,Y(outer),px1-px0,Y(-outer)-Y(outer));
+      }
+      ctx.fillStyle="rgba(54,201,138,0.32)";
+      ctx.fillRect(px0,Y(base),px1-px0,Y(-base)-Y(base));
+    }
+  }
+
+  // ---- hoek-as onderaan: elke 5 graden een dun streepje over de volle
+  // grafiekhoogte + label ----
+  ctx.textAlign="center"; ctx.font="10.5px sans-serif";
+  for(let deg=Math.ceil(ANGLE_MIN/5)*5; deg<=ANGLE_MAX+1e-6; deg+=5){
+    const px=X(deg);
+    ctx.strokeStyle="rgba(0,0,0,0.22)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+ph); ctx.stroke();
+    ctx.fillStyle="#333"; ctx.fillText(deg.toFixed(0)+"°", px, py+ph+14);
+  }
+
+  // ---- handvathoogte-as bovenaan: dikke streep + label bij 135 en 170 cm ----
+  [[CRIT.H_THRESH,CRIT.H_THRESH.toFixed(0)+" cm"],[CRIT.H_MAX,CRIT.H_MAX.toFixed(0)+" cm"]].forEach(([htgt,label])=>{
+    const deg=degForHeight(htgt);
+    if(deg==null||deg<ANGLE_MIN||deg>ANGLE_MAX) return;
+    const px=X(deg);
+    ctx.strokeStyle="#444"; ctx.lineWidth=2.6;
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+ph); ctx.stroke();
+    ctx.fillStyle="#222"; ctx.font="bold 11px sans-serif";
+    ctx.fillText(label, px, py-8);
+    ctx.font="10.5px sans-serif";
+  });
+
+  // ---- afgelegde afstand op de cirkelbaan onderaan: korte streepjes op
+  // 0/10/20 cm vanaf de start van de omhoog- resp. omlaaggaande beweging
+  // (elk vanaf zijn eigen startpunt, dus twee onafhankelijke 0-punten) ----
+  if(L!=null && res && res.moves){
+    const upMove=res.moves.find(m=>m.direction==="up");
+    const downMove=res.moves.find(m=>m.direction==="down");
+    const drawArcTicks=(move,sign,arrow)=>{
+      if(!move) return;
+      [0,10,20].forEach(d=>{
+        const arc=move.arcStart+sign*d;
+        const deg=(th0-arc/L)/D2R;
+        if(deg<ANGLE_MIN||deg>ANGLE_MAX) return;
+        const px=X(deg);
+        ctx.strokeStyle="#1e9e6a"; ctx.lineWidth=1.6;
+        ctx.beginPath(); ctx.moveTo(px,py+ph-10); ctx.lineTo(px,py+ph+4); ctx.stroke();
+        ctx.fillStyle="#1e9e6a"; ctx.font="9.5px sans-serif";
+        ctx.fillText(d.toFixed(0)+"cm"+arrow, px, py+ph+30);
+      });
+    };
+    drawArcTicks(upMove,1,"↑");
+    drawArcTicks(downMove,-1,"↓");
+  }
+  ctx.textAlign="left";
+
+  // ---- kracht-nullijn + meetdata (boven op de achtergrond getekend) ----
   ctx.strokeStyle="#bbb"; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.beginPath();
   ctx.moveTo(x,Y(0)); ctx.lineTo(x+w,Y(0)); ctx.stroke(); ctx.setLineDash([]);
   ctx.strokeStyle="#00b4ce"; ctx.lineWidth=1.4; ctx.globalAlpha=0.55; ctx.beginPath();
   let started=false;
   for(let i=0;i<n;i++){ const deg=series.angle_deg[i], N=series.force_N[i];
     if(isNaN(deg)||N===""||isNaN(N)) continue;
-    const px=X(deg), py=Y(N); started?ctx.lineTo(px,py):ctx.moveTo(px,py); started=true; }
+    const px=X(deg), py2=Y(N); started?ctx.lineTo(px,py2):ctx.moveTo(px,py2); started=true; }
   ctx.stroke(); ctx.globalAlpha=1;
+  // Rood = C1/C2 (kracht > envelope, incl. buiten de 150%-marge) of C3
+  // (handvathoogte > H_MAX) -- zelfde violSet als voorheen, nu ook visueel
+  // consistent met de rood/oranje/groen-achtergrond hierboven.
   const violSet=new Set([...res.violation_indices, ...res.height_violation_indices]);
   for(let i=0;i<n;i++){ const deg=series.angle_deg[i], N=series.force_N[i];
     if(isNaN(deg)||N===""||isNaN(N)) continue;
     const bad=violSet.has(i);
     ctx.fillStyle=bad?"#CC0000":"#00b4ce";
     ctx.beginPath(); ctx.arc(X(deg),Y(N), bad?3.4:2.2, 0, 7); ctx.fill(); }
-  ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,y,w,h);
+
+  // ---- kader + assen-labels ----
+  ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,py,w,ph);
   ctx.fillStyle="#333"; ctx.font="12px sans-serif";
-  ctx.fillText(ANGLE_MIN.toFixed(0)+"°", x-2, y+h+16);
-  ctx.fillText("+"+ANGLE_MAX.toFixed(0)+"°", x+w-24, y+h+16);
-  ctx.fillText("hoek (°)", x+w/2-22, y+h+16);
-  ctx.fillText("+"+FORCE_MAX.toFixed(0)+" N", x, y+4);
-  ctx.fillText(FORCE_MIN.toFixed(0)+" N", x, y+h-4);
+  ctx.fillText("hoek (°)", x+w/2-22, py+ph+46);
+  ctx.fillText("+"+FORCE_MAX.toFixed(0)+" N", x+2, py+12);
+  ctx.fillText(FORCE_MIN.toFixed(0)+" N", x+2, py+ph-4);
 }
 // Bouwt EEN groot rapport-canvas (titel/setup/criteria/PASS-FAIL-tabel/
 // eindoordeel + beide grafieken). Wordt zowel als afbeelding in de
@@ -884,7 +1057,7 @@ function buildAnalyseReportCanvas(){
   meas.font="12.5px sans-serif";
   const critLines=[]; criteriaTextLines().forEach(line=>wrapText(meas,line,W-2*PAD-8).forEach(l=>critLines.push(l)));
 
-  const CHART_H=400;
+  const CHART_H=478;   // 400px plot-rechthoek + ruimte voor de hoogte-as (boven) en de hoek-/afstand-as (onder), zie TOPAX/BOTAX in drawAngleForceChart()
   const H = PAD + 30 + 30 + 26 + 26 + 20
     + 24 + 7*lineH + 16
     + 24 + critLines.length*lineH + 16
@@ -935,7 +1108,8 @@ function buildAnalyseReportCanvas(){
   ctx.fillStyle=passAll?"#006100":"#9C0006"; ctx.font="bold 26px sans-serif";
   ctx.fillText("EINDOORDEEL: "+(passAll?"PASS":"FAIL"), PAD+10, y-4);
   y+=20+24;
-  ctx.fillStyle="#111"; ctx.font="bold 14px sans-serif"; ctx.fillText("Kracht vs. hoek (rood = C1/C2/C3-overschrijding)", PAD, y); y+=8;
+  ctx.fillStyle="#111"; ctx.font="bold 14px sans-serif";
+  ctx.fillText("Kracht vs. hoek  —  groen: toegestaan | oranje: 150%-breakaway-marge (eerste 20cm) | rood: afkeur (buiten envelope of >170cm hoogte)", PAD, y); y+=8;
   drawAngleForceChart(ctx, PAD, y, W-2*PAD, CHART_H, series, res);
   return {canvas, series, res};
 }

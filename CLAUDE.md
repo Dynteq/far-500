@@ -27,7 +27,7 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    Optioneel (los van de hub): `far500-upload-worker/` is een Cloudflare
    Worker die de "Naar GitHub"-knoppen in de laptop-UI bedient — zet een
    geüploade meting (.xlsx) door naar een GitHub Release-asset (tag
-   `recordings` op DynteqBV/far-500). Reden: directe browser-upload naar
+   `recordings` op dynteq/far-500). Reden: directe browser-upload naar
    GitHub kan niet (uploads.github.com heeft geen CORS, en de CORS-vriendelijke
    Actions-dispatch-triggers hebben een payloadlimiet van 64KB). Het
    GitHub-token blijft server-side in de Worker; de UI kent alleen een
@@ -47,6 +47,90 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-19** (handmatige hoek-invoer + GitHub-links/PDF-dropdown +
+  norm-achtergrond in de rapport-grafiek, op verzoek), alles in `FAR-500.html`:
+  - **Probleem dat is opgelost**: een oude meting laden vanaf GitHub kan een
+    handvathoogte (yHigh/yLow) hebben zonder de bijbehorende hoek (angHigh/
+    angLow) — bv. exports van vóór deze functie, of een meting waarbij niet op
+    "vastleggen" is geklikt. Zonder die hoeken kan L/H (en dus de cirkelbaan)
+    niet berekend worden en blijven de "Rapportage + Analyse XLSX/PDF"-knoppen
+    uitgeschakeld.
+  - **Knop "Vastleggen" heet nu "Huidige positie vastleggen"** (`capHigh`/
+    `capLow`), om te verduidelijken dat hij de live hoek van dat moment
+    vastlegt. Ernaast twee nieuwe invulvelden ("Hoek HOOG/LAAG (deg, hand.)",
+    defaults **+1.0** resp. **-46.0**, de op verzoek gegeven waarden) plus een
+    knop **"Overschrijf posities"** (`btnOverridePositions`) die geo.angHigh/
+    geo.angLow (en geo.yHigh/yLow uit de bestaande hoogtevelden) forceert en
+    `computeGeo()` opnieuw draait — ook zonder live BLE-verbinding.
+  - **"Oude meting laden (GitHub)"-kaart uitgebreid**: een link "Alle
+    bestanden bekijken op GitHub →" naar
+    `github.com/dynteq/far-500/releases/tag/recordings`, en een tweede
+    dropdown die alleen de `.pdf`-assets uit diezelfde release toont (al
+    eerder gegenereerde "Rapportage + Analyse PDF"-bestanden), met knop
+    "PDF-rapport openen/downloaden" die 'm via de bestaande
+    `GET /download?name=`-Worker-proxy (far500-upload-worker, zie
+    Architectuur) ophaalt en downloadt. `refreshOldMeasurementList()` is
+    hiervoor verbreed tot `refreshGhAssets()`: haalt de releaselijst 1x op en
+    filtert 'm in twee dropdowns (`.xlsx` voor "laden in het analyse-scherm",
+    `.pdf` voor rapporten) — de metingen-dropdown toonde voorheen ook al
+    `_rapport.xlsx`/`_geschiedenis.xlsx`/`.pdf`-bestanden zonder filter (die
+    gaven bij laden altijd al een duidelijke foutmelding via
+    `parseFarMetingWorkbook()`, dus geen gedragswijziging, wel iets opgeruimder).
+  - **Kracht-vs-hoek-grafiek in het rapport (XLSX + PDF) flink uitgebreid**
+    (`drawAngleForceChart()`), op verzoek:
+    - **Hoek-as (onderaan)**: nu bij elke 5° een dun streepje over de volle
+      grafiekhoogte + label (was alleen de twee eindpunten).
+    - **Handvathoogte-as (bovenaan)**: dikke streep + label bij **135 cm** en
+      **170 cm** — de hoek die bij die hoogte hoort wordt berekend als de
+      inverse van de bestaande hoogteformule (`Hused()-Lused()*sin(theta)`,
+      dezelfde als in `analyze()`), dus consistent met de rest van de tool.
+    - **Afgelegde afstand (onderaan, kort streepje)**: 0/10/20 cm-markeringen
+      vanaf het startpunt van resp. de eerste "omhoog"- en de eerste
+      "omlaag"-beweging uit `res.moves` (dezelfde beweging-segmentatie als de
+      C1-C4-engine, `segmentMoves()`), elk vanaf hun eigen 0-punt — dus twee
+      onafhankelijke reeksen ↑/↓.
+    - **Achtergrondkleuren**: groen = toegestaan (±140N onder 135cm, ±85N
+      tussen 135-170cm — `CRIT.F_LOW`/`F_HIGH`/`H_THRESH`), oranje = de
+      bestaande 150%-breakaway-marge (`CRIT.GRACE_FACT`/`GRACE_ARC`) binnen de
+      eerste 20cm van een beweging, rood = daarbuiten (incl. >170cm/<0cm
+      handvathoogte, C3). De oranje "marge-vensters" zijn afgeleid uit
+      `res.moves[].anchorArc` (dezelfde anker-logica als `runForceCheck()`/
+      `buildEnvelope()`) omgerekend naar hoek via dezelfde `arc_cm`-referentie
+      (`th0`) als `analyze()` gebruikt — dus wiskundig identiek aan wat de
+      engine per sample als "in_grace" aanmerkt, geen aparte benadering.
+      De meetpunten zelf werden al rood gekleurd bij een C1/C2/C3-
+      overschrijding (`res.violation_indices`/`height_violation_indices`,
+      ongewijzigd) — dat komt nu dus ook visueel overeen met de rode
+      achtergrond.
+    - Chart-blok is intern hoger gemaakt (`CHART_H` 400→478px) om ruimte te
+      reserveren voor de extra assen; het eigenlijke plot-rechthoek is
+      ongewijzigd 400px hoog.
+  - **far500-force-check (Python/CLI) is bewust niet aangepast** — dit verzoek
+    ging over de UI-eigen rapport-PDF/XLSX (canvas-gerasterd, zie eerdere
+    sessie), niet over de losse CI-tool. Als de force-check-PDF dezelfde
+    assen/achtergrond moet krijgen is dat een apart, nog niet gedaan stukje
+    werk (zie de "twee implementaties, hou ze in sync"-notitie hierboven bij
+    Architectuur).
+  - **Getest**: `node --check` op het geëxtraheerde script (geen syntaxfouten),
+    en een headless jsdom-run (canvas-2D-context en `canvas.toBlob()`
+    gestubd, zelfde aanpak als eerdere sessies — dit environment heeft geen
+    browser-tooling) die: (1) bevestigt dat de GitHub-link en beide dropdowns
+    (met een gemockte `fetch()`-respons van 2 .xlsx- en 1 .pdf-asset) correct
+    gevuld/gefilterd worden; (2) de knoppekst-wijziging en de default-waarden
+    (+1.0/-46.0) van de nieuwe hoek-velden verifieert; (3) de
+    "Overschrijf posities"-knop daadwerkelijk `geo.angHigh`/`angLow` zet en
+    `computeGeo()` een geldige L/H teruggeeft; (4) een synthetische
+    up-piek-down-meting (met bewust een C2- en C3-overschrijding erin)
+    zonder exceptions door `buildAnalyseReportCanvas()` →
+    `buildReportXlsxBlob()` → `buildAnalysisPdfBlob()` haalt, en dat de
+    output een geldig zip/XLSX (`PK\x03\x04`-signature, ingelezen door
+    Python's `zipfile`/`openpyxl`: juiste 2 tabbladen) resp. geldige PDF
+    (`%PDF-`-header, 1 pagina A4-landscape, ingelezen door `pypdf`) is.
+    **Niet visueel gecontroleerd** hoe de nieuwe assen/achtergrondkleuren er
+    in een echte browser/PDF-viewer precies uitzien (positionering van
+    labels/streepjes, leesbaarheid van de legenda-tekst in de titelregel) —
+    graag met een echte meting (of een van de bestaande GitHub-recordings +
+    de nieuwe hoek-override) een keer een PDF genereren en visueel nalopen.
 - **2026-08-11** (rapport-grafiek + C4-normwijziging, op verzoek):
   - **Grafiek in het analyse-rapport (XLSX/PDF) vervangen.** De twee
     tijd-gebaseerde grafieken ("Bedienkracht vs. toegestane envelope" en
@@ -234,7 +318,18 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
   synthetische fixtures) vóór productiegebruik.
 - "Naar GitHub"-upload (Cloudflare Worker relay) toegevoegd aan de UI, gedeployed en end-to-end getest (2026-07-30) — werkt met een classic PAT (zie Architectuur-sectie voor het waarom). Bestandsnamen (export + upload) beginnen nu met een `yyyymmdd_hhmmss`-tijdstempel.
 - Repo verplaatst van persoonlijk account (studiotijn) naar org `DynteqBV` (2026-07-30).
-- Later (nog niet actueel): GitHub-org hernoemen van `DynteqBV` naar `dynteq` zodra die naam vrijkomt (nu nog in gebruik door een collega).
+- **2026-08-17**: GitHub-org hernoemd van `DynteqBV` naar `dynteq` (gebruiker had het
+  bedrijfsaccount net omgedoopt). GitHub redirect de oude org-URL's automatisch,
+  maar alle harde verwijzingen in de codebase zijn toch bijgewerkt naar `dynteq`:
+  `README.md` (live-UI-link + releases-link), `far500-upload-worker/README.md`,
+  `far500-upload-worker/src/index.js` (`OWNER`-constante) en `FAR-500.html`
+  (`GH_LIST_URL`). De Cloudflare Worker-URL zelf
+  (`far500-upload-worker.workers.dev`) is een los subdomein en hoefde niet aangepast.
+  **Nog te doen (buiten deze sessie, geen repo-schrijftoegang hiervoor):** de
+  Cloudflare Worker opnieuw deployen (`npx wrangler deploy` vanuit
+  `far500-upload-worker/`) zodat de nieuwe `OWNER`-waarde ook live actief wordt —
+  tot die deploy draait de Worker nog op de oude `DynteqBV`-waarde (werkt dankzij
+  GitHub's redirect, maar beter alsnog deployen).
 - Optimalisatie van UI
 - Bouwen / valideren van hoek justering
 
