@@ -47,6 +47,20 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-20** (vervolg: PDF-rapport nu altijd 1 pagina, op verzoek, in
+  `FAR-500.html`): de tweede pagina (uitgebreide criteria-uitleg C1-C4) is
+  volledig verwijderd. `buildAnalyseReportCanvas()` tekent de criteria-tekst
+  niet meer (dode `criteriaTextLines()`/`wrapText()`-functies ook verwijderd,
+  niets anders riep ze aan) en geeft geen `chartTop`-splitpunt meer terug;
+  `buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx)` is vereenvoudigd naar een
+  vaste 1-pagina-opbouw (geen `splitPx`-parameter, geen pagina-clip-logica
+  meer nodig). Titel/metadata/setup/Uitkomst-tabel/eindoordeel/grafiek staan
+  allemaal op die ene pagina, breedte-vullend. Geldt voor zowel de PDF als
+  de XLSX (delen dezelfde canvas-afbeelding) — de XLSX had het criteria-blok
+  al nooit als apart "tabblad", dus die verandert verder niet. **Getest**:
+  `node --check`, en een jsdom-run die bevestigt dat "Criteria" nergens meer
+  getekend wordt en dat de gegenereerde PDF exact 1 `/Page`-object met
+  `/Count 1` heeft. **Niet visueel gecontroleerd** in een echte PDF-viewer.
 - **2026-08-20** (ruisfilter op hoek/positie-signaal + 3 opmaakfixes, alles
   in `FAR-500.html`):
   - **Ruis op het hoek/positie-signaal gefixt** (op verzoek, na de eerdere

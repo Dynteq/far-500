@@ -279,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 10:01</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 10:10</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -993,17 +993,6 @@ function buildSeries(){
     handle_height_cm: A.ht.slice(0,samples.length),
   };
 }
-function criteriaTextLines(){
-  const c=CRIT;
-  return [
-    "C1 — onder "+c.H_THRESH.toFixed(0)+" cm handvathoogte: kracht ≤ "+c.F_LOW.toFixed(0)+" N (eerste "+c.GRACE_ARC.toFixed(0)+" cm vanaf het anker: ≤ "+(c.GRACE_FACT*c.F_LOW).toFixed(1)+" N breakaway-marge).",
-    "C2 — boven "+c.H_THRESH.toFixed(0)+" cm handvathoogte: kracht ≤ "+c.F_HIGH.toFixed(0)+" N (zelfde breakaway-marge tot "+(c.GRACE_FACT*c.F_HIGH).toFixed(1)+" N, A1 GRACE_ABOVE="+c.GRACE_ABOVE+").",
-    "C3 — handvathoogte ≤ "+c.H_MAX.toFixed(0)+" cm (A3 HEIGHT_MAX_IS_FAIL="+c.HEIGHT_MAX_IS_FAIL+").",
-    "C4 — snelheid ≤ Max snelheid, versnelling ≤ Max versnelling (uit de metadata, anders default "+DEFAULT_VMAX+"/"+DEFAULT_AMAX+"). Informatief: geen officiële eis, telt "+(c.C4_AFFECTS_OVERALL?"wél":"niet")+" mee in het eindoordeel (A6).",
-    "Anker: overschrijdt |F| de basislimiet binnen de eerste "+c.DETECT_ARC.toFixed(0)+" cm van een beweging, dan ligt het anker op dat kruisingspunt; anders op het bewegingsbegin. Het "+c.GRACE_ARC.toFixed(0)+" cm-breakaway-venster geldt in beide gevallen vanaf dat anker.",
-    "Kracht getoetst als |force_N| (A2, USE_ABS_FORCE="+c.USE_ABS_FORCE+"). Richtingsdetectie met REV_HYST="+c.REV_HYST.toFixed(1)+" cm hysterese.",
-  ];
-}
 function outcomeRows(res){
   const c=CRIT;
   return [
@@ -1012,13 +1001,6 @@ function outcomeRows(res){
     ["C3", res.c3_ok, "max hoogte = "+res.max_height_cm.toFixed(1)+" cm (limiet "+c.H_MAX.toFixed(0)+" cm)"],
     ["C4 (info)", res.c4_ok, "piek snelheid = "+res.max_speed_cm_s.toFixed(1)+" cm/s, piek versnelling = "+res.max_accel_cm_s2.toFixed(1)+" cm/s2"+(c.C4_AFFECTS_OVERALL?"":" — geen officiële eis, telt niet mee in het eindoordeel")],
   ];
-}
-function wrapText(ctx,text,maxWidth){
-  const words=text.split(" "); const lines=[]; let cur="";
-  words.forEach(w=>{ const test=cur?cur+" "+w:w;
-    if(ctx.measureText(test).width>maxWidth && cur){ lines.push(cur); cur=w; } else cur=test; });
-  if(cur) lines.push(cur);
-  return lines;
 }
 // Zelfde vaste assen als de live "Kracht vs. hoek"-grafiek (ANGLE_MIN/MAX,
 // FORCE_MIN/MAX, gedeclareerd in de GRAFIEKEN-sectie verderop) -- op verzoek
@@ -1306,9 +1288,6 @@ function buildAnalyseReportCanvas(){
   // font-/spatiëringsconstanten zijn met 2.5 vermenigvuldigd zodat de
   // verhoudingen gelijk blijven.
   const W=1700, PAD=60, lineH=50;
-  const meas=document.createElement("canvas").getContext("2d");
-  meas.font="31px sans-serif";
-  const critLines=[]; criteriaTextLines().forEach(line=>wrapText(meas,line,W-2*PAD-8).forEach(l=>critLines.push(l)));
 
   // axisFontPx=38 geeft, na de ~0.32x terugschaling naar de A4-pagina (zie
   // buildAnalysisPdfBlob()), een leesbare ~12pt astekst (op verzoek --
@@ -1319,18 +1298,17 @@ function buildAnalyseReportCanvas(){
   const CHART_AXIS_FONT=38;
   const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*6.3);
 
-  // Op verzoek: de grafiek staat nu volledig op PAGINA 1, direct ná de
-  // titel/metadata/setup/Uitkomst-tabel/eindoordeel (geen criteria-tekst
-  // meer tussen eindoordeel en grafiek). De uitgebreide criteria-uitleg
-  // komt daarna als eigen blok, altijd op pagina 2 -- en omdat de grafiek
-  // daar dan al "op" is (pagina 1 volledig gevuld), staat er op pagina 2
-  // nooit een grafiek. Metadata (naam/notities/datum) staat compact op 1
-  // regel i.p.v. 3 losse regels.
+  // Op verzoek: het rapport is nu altijd 1 pagina (de uitgebreide
+  // criteria-uitleg, die voorheen als los blok op pagina 2 stond, is
+  // hiervoor geheel verwijderd -- zie `criteriaTextLines()` in de
+  // git-historie als die tekst ooit terug moet komen). Titel/metadata/
+  // setup/Uitkomst-tabel/eindoordeel/grafiek staan allemaal op die ene
+  // pagina. Metadata (naam/notities/datum) staat compact op 1 regel i.p.v.
+  // 3 losse regels.
   const TOP_BLOCK_H = 60 + 70 + 75 + 15 + 7*lineH;                 // titel + metadata-regel + "Setup" + 7 rijen
   const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+70;         // "Uitkomst" + kop + 4 rijen + eindoordeel
   const CHART_TITLE_GAP = 50+60+20;                                // ruimte + titelregel vóór de grafiek
-  const critBlockH = 40+60 + 15 + critLines.length*lineH;          // "Criteria" + regels (pagina 2)
-  const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + CHART_TITLE_GAP + CHART_H + 40 + critBlockH + PAD;
+  const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + CHART_TITLE_GAP + CHART_H + PAD;
 
   const canvas=document.createElement("canvas");
   canvas.width=W; canvas.height=Math.round(H);
@@ -1385,17 +1363,7 @@ function buildAnalyseReportCanvas(){
   drawAngleForceChart(ctx, PAD, y, W-2*PAD, CHART_H, series, res, CHART_AXIS_FONT);
   y+=CHART_H;
 
-  // Splitpunt voor de PDF: titel/metadata/setup/uitkomst/eindoordeel/grafiek
-  // staan samen op pagina 1; de criteria-uitleg (hierna) komt altijd op
-  // pagina 2, zonder dat de grafiek daar nog zichtbaar is -- zie
-  // buildAnalysisPdfBlob().
-  const chartTop=y+40;
-
-  // ---- Pagina 2: uitgebreide criteria-uitleg (geen grafiek meer) ----
-  y=chartTop; y+=40; y+=60; ctx.font="bold 40px sans-serif"; ctx.fillText("Criteria", PAD, y); y+=15;
-  ctx.font="31px sans-serif";
-  critLines.forEach(l=>{ y+=lineH; ctx.fillText(l, PAD, y); });
-  return {canvas, series, res, chartTop};
+  return {canvas, series, res};
 }
 async function canvasToJpegBytes(canvas,quality){
   const blob=await new Promise(resolve=>canvas.toBlob(resolve,"image/jpeg",quality||0.9));
@@ -1487,9 +1455,9 @@ $("btnXlsx").onclick=()=>{ const f=buildMetingXlsx(); download(f.name,f.blob); }
 $("btnXlsxGh").onclick=()=>{ const f=buildMetingXlsx(); uploadToGitHub(f.blob,f.name,"ghStatus","btnXlsxGh"); };
 
 async function buildAnalyseReportAssets(){
-  const {canvas, series, res, chartTop}=buildAnalyseReportCanvas();
+  const {canvas, series, res}=buildAnalyseReportCanvas();
   const jpegBytes=await canvasToJpegBytes(canvas,0.9);
-  return {canvas, series, res, chartTop, jpegBytes};
+  return {canvas, series, res, jpegBytes};
 }
 // Vóór het genereren van een rapport moeten de vier tekstvelden (Naam,
 // Notities, Handvat HOOG/LAAG cm) gevuld zijn ÉN moeten beide posities
@@ -1518,8 +1486,8 @@ $("btnReportPdf").onclick=async()=>{
   if(!reportPrereqsOk()) return;
   const btn=$("btnReportPdf"); btn.disabled=true;
   try{
-    const {canvas, chartTop, jpegBytes}=await buildAnalyseReportAssets();
-    const blob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height, chartTop);
+    const {canvas, jpegBytes}=await buildAnalyseReportAssets();
+    const blob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
     const name=fnameSuffix("analyse","pdf");
     download(name, blob);
     // Op verzoek: in zowel Standard als Advanced wordt het PDF-rapport ook
@@ -1657,70 +1625,37 @@ function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
 // Zelfde afweging als hierboven: 1 ingesloten JPEG (het identieke rapport-
 // canvas) i.p.v. een tekst-layout-engine erbij bouwen. DCTDecode kan een
 // baseline-JPEG rechtstreeks (zonder her-encoderen) als /DeviceRGB-XObject
-// insluiten -- standaardtechniek, geen library nodig.
-// Twee pagina's (i.p.v. 1) zodra splitPx is opgegeven: de 2.5x grotere
-// tekst + 30% hogere grafiek passen niet meer samen op één A4-portrait-
-// pagina zonder dat de grafiek de paginabreedte niet meer zou vullen. Beide
-// pagina's tonen dezelfde ingesloten JPEG, alleen met een andere
-// plaatsing/schaal -- het ongewenste deel valt vanzelf buiten de
-// pagina-MediaBox (PDF-viewers tekenen nooit buiten de MediaBox), dus geen
-// aparte crop/clip-operator nodig.
-function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx, splitPx){
+// insluiten -- standaardtechniek, geen library nodig. Op verzoek altijd 1
+// pagina (de vroegere pagina-2-criteria-uitleg is uit het rapport verwijderd,
+// zie buildAnalyseReportCanvas()) -- breedte-vullend, boven uitgelijnd.
+function buildAnalysisPdfBlob(jpegBytes, imgWpx, imgHpx){
   const PAGE_W=595, PAGE_H=842, MARGIN=24; // A4 portrait, pt (op verzoek i.p.v. landscape)
   const availW=PAGE_W-2*MARGIN, availH=PAGE_H-2*MARGIN;
-  const hasSplit=splitPx>0 && splitPx<imgHpx;
-  const pages=[];
-  if(hasSplit){
-    const s1=Math.min(availW/imgWpx, availH/splitPx);
-    pages.push({scale:s1, ty:PAGE_H-MARGIN-imgHpx*s1, rowStart:0, rowEnd:splitPx});           // pagina 1: rows [0,splitPx), boven uitgelijnd
-    const regionH2=imgHpx-splitPx;
-    const s2=Math.min(availW/imgWpx, availH/regionH2);
-    pages.push({scale:s2, ty:PAGE_H-MARGIN-regionH2*s2, rowStart:splitPx, rowEnd:imgHpx});    // pagina 2: rows [splitPx,imgHpx), boven uitgelijnd
-  } else {
-    const s=Math.min(availW/imgWpx, availH/imgHpx);
-    pages.push({scale:s, ty:PAGE_H-MARGIN-imgHpx*s, rowStart:0, rowEnd:imgHpx});
-  }
-  const nPages=pages.length;
-  const pageObjNums=pages.map((_,i)=>3+i);
-  const imgObjNum=3+nPages;
-  const contentObjNums=pages.map((_,i)=>3+nPages+1+i);
-  const totalObjs=2+nPages+1+nPages;
+  const scale=Math.min(availW/imgWpx, availH/imgHpx);
+  const drawW=imgWpx*scale, drawH=imgHpx*scale, tx=(PAGE_W-drawW)/2, ty=PAGE_H-MARGIN-drawH;
 
   const enc=new TextEncoder();
   const chunks=[]; let offset=0; const objOffsets=[];
   function push(bytesOrStr){ const b=(typeof bytesOrStr==="string")?enc.encode(bytesOrStr):bytesOrStr; chunks.push(b); offset+=b.length; }
   function beginObj(n){ objOffsets[n]=offset; push(n+" 0 obj\n"); }
 
+  const contentStream=drawW.toFixed(2)+" 0 0 "+drawH.toFixed(2)+" "+tx.toFixed(2)+" "+ty.toFixed(2)+" cm /Im1 Do";
+  const contentBytes=enc.encode("q\n"+contentStream+"\nQ");
+
   push("%PDF-1.4\n");
   beginObj(1); push("<</Type /Catalog /Pages 2 0 R>>\nendobj\n");
-  beginObj(2); push("<</Type /Pages /Kids ["+pageObjNums.map(n=>n+" 0 R").join(" ")+"] /Count "+nPages+">>\nendobj\n");
-  pages.forEach((p,i)=>{
-    beginObj(pageObjNums[i]);
-    push("<</Type /Page /Parent 2 0 R /MediaBox [0 0 "+PAGE_W+" "+PAGE_H+"] "+
-      "/Resources <</XObject <</Im1 "+imgObjNum+" 0 R>>>> /Contents "+contentObjNums[i]+" 0 R>>\nendobj\n");
-  });
-  beginObj(imgObjNum);
-  push("<</Type /XObject /Subtype /Image /Width "+imgWpx+" /Height "+imgHpx+
+  beginObj(2); push("<</Type /Pages /Kids [3 0 R] /Count 1>>\nendobj\n");
+  beginObj(3); push("<</Type /Page /Parent 2 0 R /MediaBox [0 0 "+PAGE_W+" "+PAGE_H+"] "+
+    "/Resources <</XObject <</Im1 4 0 R>>>> /Contents 5 0 R>>\nendobj\n");
+  beginObj(4); push("<</Type /XObject /Subtype /Image /Width "+imgWpx+" /Height "+imgHpx+
     " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length "+jpegBytes.length+">>\nstream\n");
   push(jpegBytes);
   push("\nendstream\nendobj\n");
-  pages.forEach((p,i)=>{
-    const drawW=imgWpx*p.scale, drawH=imgHpx*p.scale, tx=(PAGE_W-drawW)/2, ty=p.ty;
-    // Expliciete clip op alleen dit pagina's rijbereik -- zonder deze clip
-    // liep (bij een breedte-gebonden schaal, dus met "slack" in de hoogte)
-    // de inhoud van de volgende regio gewoon door tot de paginarand, wat
-    // dubbele/afgekapte content op de pagina-overgang gaf.
-    const contentH=(p.rowEnd-p.rowStart)*p.scale, clipY=ty+drawH-contentH;
-    const clip=tx.toFixed(2)+" "+clipY.toFixed(2)+" "+drawW.toFixed(2)+" "+contentH.toFixed(2)+" re W n";
-    const contentStream=drawW.toFixed(2)+" 0 0 "+drawH.toFixed(2)+" "+tx.toFixed(2)+" "+ty.toFixed(2)+" cm /Im1 Do";
-    const contentBytes=enc.encode("q\n"+clip+"\n"+contentStream+"\nQ");
-    beginObj(contentObjNums[i]);
-    push("<</Length "+contentBytes.length+">>\nstream\n");
-    push(contentBytes);
-    push("\nendstream\nendobj\n");
-  });
+  beginObj(5); push("<</Length "+contentBytes.length+">>\nstream\n");
+  push(contentBytes);
+  push("\nendstream\nendobj\n");
 
-  const xrefStart=offset;
+  const xrefStart=offset, totalObjs=5;
   let xref="xref\n0 "+(totalObjs+1)+"\n0000000000 65535 f \n";
   for(let i=1;i<=totalObjs;i++) xref+=String(objOffsets[i]).padStart(10,"0")+" 00000 n \n";
   push(xref);
