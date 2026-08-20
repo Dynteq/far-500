@@ -279,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 10:10</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 11:15</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -1056,12 +1056,14 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // beweging minstens 50% van de bedienkracht (regio-afhankelijke basis
   // F_LOW/F_HIGH) haalt -- geen breakaway-piek, dan ook geen marge-kader.
   // Het kader begint dan (0cm) precies bij dat 50%-kruispunt, niet eerder,
-  // en loopt van daaruit 20cm cirkelbaanlengte door (CRIT.GRACE_ARC). Bij
-  // OMHOOG is de kracht altijd positief (trekkracht): het kader zit daarom
-  // uitsluitend boven +base, nooit gespiegeld naar negatief. Bij OMLAAG kan
-  // de kracht positief (lege goot) of negatief (beladen goot) zijn -- welke
-  // kant van het kader getekend wordt volgt uit het teken van de gemiddelde
-  // kracht in dat 20cm-venster.
+  // en loopt van daaruit 20cm cirkelbaanlengte door (CRIT.GRACE_ARC).
+  // Op verzoek: het kader heeft een VAST, richtingsgebonden teken i.p.v. het
+  // teken van de gemiddelde kracht in het venster te volgen -- OMHOOG
+  // uitsluitend boven +base (nooit gespiegeld naar negatief), OMLAAG
+  // uitsluitend onder -base (nooit gespiegeld naar positief). Bereikt de
+  // kracht in die beweging die vereiste kant nooit met >=50%, dan wordt er
+  // voor die beweging helemaal geen kader getekend (i.p.v. naar de andere
+  // kant te spiegelen).
   function findHalfCrossArc(move){
     for(let i=move.start;i<=move.end;i++){
       const height=series.handle_height_cm[i];
@@ -1070,23 +1072,52 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     }
     return null;
   }
+  // Zelfde als findHalfCrossArc, maar dan uitsluitend voor het opgegeven
+  // teken (niet |force|) -- houdt het oranje kader vast aan die kant.
+  function findSignedHalfCrossArc(move,wantSign){
+    for(let i=move.start;i<=move.end;i++){
+      const height=series.handle_height_cm[i];
+      const base=height<CRIT.H_THRESH?CRIT.F_LOW:CRIT.F_HIGH;
+      const f=series.force_N[i];
+      if(wantSign<0 ? (f<=-0.5*base) : (f>=0.5*base)) return series.arc_cm[i];
+    }
+    return null;
+  }
+  // Ticks (0/10/20cm) tonen we alleen bij een échte, snelle breakaway: vanaf
+  // het punt waar de kracht voor het eerst 10% van de bedienkracht bereikt,
+  // moet binnen de eerstvolgende 5 graden ook de 50% gehaald worden. Bouwt
+  // de kracht te traag/geleidelijk op (geen 50% binnen die 5 graden), dan is
+  // er geen duidelijk bewegingsbegin om te markeren en tonen we geen ticks.
+  function hasQuickBreakaway(move){
+    if(!move) return false;
+    let idx10=null;
+    for(let i=move.start;i<=move.end;i++){
+      const height=series.handle_height_cm[i];
+      const base=height<CRIT.H_THRESH?CRIT.F_LOW:CRIT.F_HIGH;
+      if(Math.abs(series.force_N[i])>=0.1*base){ idx10=i; break; }
+    }
+    if(idx10==null) return false;
+    const deg10=series.angle_deg[idx10];
+    for(let i=idx10;i<=move.end;i++){
+      if(Math.abs(series.angle_deg[i]-deg10)>5) break;
+      const height=series.handle_height_cm[i];
+      const base=height<CRIT.H_THRESH?CRIT.F_LOW:CRIT.F_HIGH;
+      if(Math.abs(series.force_N[i])>=0.5*base) return true;
+    }
+    return false;
+  }
   function graceWindowDeg(anchorArc,sign){
     if(anchorArc==null||L==null) return null;
     const arcA=anchorArc, arcB=anchorArc+sign*CRIT.GRACE_ARC;
     const thA=th0-arcA/L, thB=th0-arcB/L;
     return {lo:Math.min(thA,thB)/D2R, hi:Math.max(thA,thB)/D2R};
   }
-  function graceForceSign(move,anchorArc){
-    let sum=0;
-    for(let i=move.start;i<=move.end;i++){
-      if(Math.abs(series.arc_cm[i]-anchorArc)<=CRIT.GRACE_ARC) sum+=series.force_N[i];
-    }
-    return sum<0?-1:1;
-  }
   const upCross=upMove?findHalfCrossArc(upMove):null;
   const downCross=downMove?findHalfCrossArc(downMove):null;
-  const upWin=(upMove&&upCross!=null)?Object.assign({sign:1},graceWindowDeg(upCross,1)):null;
-  const downWin=(downMove&&downCross!=null)?Object.assign({sign:graceForceSign(downMove,downCross)},graceWindowDeg(downCross,-1)):null;
+  const upPosCross=upMove?findSignedHalfCrossArc(upMove,1):null;
+  const downNegCross=downMove?findSignedHalfCrossArc(downMove,-1):null;
+  const upWin=(upMove&&upPosCross!=null)?Object.assign({sign:1},graceWindowDeg(upPosCross,1)):null;
+  const downWin=(downMove&&downNegCross!=null)?Object.assign({sign:-1},graceWindowDeg(downNegCross,-1)):null;
   const graceSignAt=deg=>{
     if(upWin&&upWin.lo!=null&&deg>=upWin.lo-1e-9&&deg<=upWin.hi+1e-9) return upWin.sign;
     if(downWin&&downWin.lo!=null&&deg>=downWin.lo-1e-9&&deg<=downWin.hi+1e-9) return downWin.sign;
@@ -1158,13 +1189,14 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     ctx.font=AF+"px sans-serif";
   });
   if(px135!=null){
-    // Rechts uitgelijnd tegen de 135cm-streep zetten was niet altijd genoeg
-    // (bij sommige metingen ligt die streep dicht bij de linkerrand van de
-    // grafiek, waardoor de tekst er half vanaf liep) -- meet de werkelijke
-    // tekstbreedte en klem 'm zo nodig tegen de linkerrand van de grafiek.
+    // Altijd links van de 135cm-tekst, gekoppeld aan de werkelijk gemeten
+    // breedte van dat label -- GEEN klem tegen de linkerrand van de grafiek
+    // meer (die klem kon de tekst juist weer over "135 cm" heen duwen als
+    // de streep dicht bij de linkerrand viel, exact het overlap-probleem
+    // dat dit moest voorkomen).
     ctx.font="bold "+(AF+1)+"px sans-serif";
-    const hLabel="handvathoogte", hw=ctx.measureText(hLabel).width, gap=Math.round(AF*0.6);
-    let hx=px135-gap-hw; if(hx<x+4) hx=x+4;
+    const hLabel="handvathoogte", gap=Math.round(AF*0.6);
+    const hx=px135-gap-ctx.measureText(hLabel).width;
     ctx.textAlign="left"; ctx.fillStyle="#222";
     ctx.fillText(hLabel, hx, py-Math.round(AF*1.1));
   }
@@ -1201,19 +1233,20 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
       });
       return midPx;
     };
-    const upMidPx=drawArcTicks(upMove,upCross,1,true);
-    const downMidPx=drawArcTicks(downMove,downCross,-1,false);
+    const upMidPx=hasQuickBreakaway(upMove)?drawArcTicks(upMove,upCross,1,true):null;
+    const downMidPx=hasQuickBreakaway(downMove)?drawArcTicks(downMove,downCross,-1,false):null;
     // Verkorte onderschriften (op verzoek, "afgelegde afstand handvat start
     // beweging" was te lang) -- het weggehaalde stuk staat als voetnoot bij
     // de asterisk, helemaal linksonder de grafiek (zie verderop).
     ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="center";
     if(upMidPx!=null) ctx.fillText("* omhoog →", upMidPx, py-Math.round(AF*1.8));
     if(downMidPx!=null) ctx.fillText("* ← omlaag", downMidPx, py+ph+Math.round(AF*4.2));
-  }
-  ctx.textAlign="left";
-  if(L!=null && (upMove||downMove)){
-    ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="left";
-    ctx.fillText("* afgelegde afstand handvat vanaf start beweging", x+2, y+h-4);
+    // Voetnoot alleen als er ook echt ticks getekend zijn (anders verwijst
+    // de "*" naar niets).
+    if(upMidPx!=null||downMidPx!=null){
+      ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="left";
+      ctx.fillText("* afgelegde afstand handvat vanaf start beweging", x+2, y+h-4);
+    }
   }
   ctx.textAlign="left";
 

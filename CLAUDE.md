@@ -47,6 +47,59 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-20** (vervolg: bugfix "handvathoogte" overlapte nog steeds met
+  "135cm", op verzoek, in `FAR-500.html`, `drawAngleForceChart()`): de vorige
+  fix (build 10:01) mat de tekstbreedte, maar klemde de linkerpositie ook
+  tegen `x+4` (de linkerrand van de grafiek) als er weinig ruimte was -- en
+  precies die klem duwde de tekst weer over "135 cm" heen zodra de
+  135cm-streep dicht bij de linkerrand viel (exact het scenario dat de fix
+  moest oplossen). De klem is verwijderd: "handvathoogte" staat nu altijd
+  op basis van de gemeten tekstbreedte volledig links van "135 cm", ook als
+  dat betekent dat de tekst over de linkerrand van de grafiek (of het
+  canvas) heen loopt -- op verzoek is "geen overlap met 135cm" de leidende
+  eis, niet "binnen de grafiekrand blijven". **Getest**: `node --check`, en
+  een jsdom-run met een bewust geconstrueerde geometrie waarbij de
+  135cm-streep vlak bij `ANGLE_MIN` (dus de linkerrand) valt -- bevestigt
+  dat de oude klem hier daadwerkelijk overlap zou hebben gegeven en dat de
+  tekst er nu, zonder klem, nooit meer overheen valt. **Niet visueel
+  gecontroleerd** in een echte browser/PDF-viewer.
+- **2026-08-20** (vervolg: oranje breakaway-kader richtingsgebonden vast +
+  ticks alleen bij snelle breakaway, op verzoek, in `FAR-500.html`,
+  `drawAngleForceChart()`):
+  - **Oranje kader bij de omlaag-gaande beweging nooit meer aan de +
+    kant**: voorheen volgde de kant van het kader het teken van de
+    gemiddelde kracht in het 20cm-venster (`graceForceSign()`, nu
+    verwijderd) — dat kon het kader naar de positieve kant spiegelen. Nu
+    wordt het kader alleen getekend als de kracht ergens in de beweging
+    ECHT negatief onder -50% van de bedienkracht komt (nieuwe
+    `findSignedHalfCrossArc(move,-1)`), en dan altijd aan de negatieve kant.
+    Komt de kracht nooit onder die -50% (bv. alleen positief), dan wordt er
+    voor de omlaag-beweging helemaal geen kader getekend.
+  - **Oranje kader bij de omhoog-gaande beweging altijd aan de + kant**
+    (was al zo, nu ook expliciet afgedwongen via `findSignedHalfCrossArc
+    (move,+1)` i.p.v. de teken-ongevoelige `findHalfCrossArc` — geen kader
+    meer als er toevallig geen echte positieve 50%-overschrijding is, i.p.v.
+    een kader op de verkeerde/+ kant forceren).
+  - **Ticks (0/10/20cm) tonen we nu alleen bij een "snelle" breakaway**:
+    nieuwe `hasQuickBreakaway(move)` zoekt eerst het punt waar de kracht 10%
+    van de bedienkracht bereikt, en toont de ticks alleen als de kracht
+    binnen de eerstvolgende 5 graden ook de 50% haalt. Bouwt de kracht
+    trager op (bv. een geleidelijke, geen-echte-breakaway-meting), dan
+    worden er voor die beweging geen ticks (en geen "* omhoog/omlaag"-
+    onderschrift/voetnoot) getekend. De TICK-*positie* zelf (bij een
+    geslaagde check) is ongewijzigd — nog steeds het bestaande, teken-
+    ongevoelige 50%-kruispunt (`upCross`/`downCross`), op verzoek.
+  - **Getest**: `node --check`, en 6 losse jsdom-scenario's via de volledige
+    `buildAnalyseReportCanvas()`-pijplijn: (A) omlaag+echt negatief ≥50% →
+    kader uitsluitend op de negatieve kant (bevestigd tegen een uit de
+    ±140N-rasterlijnen afgeleide nullijn-y-positie); (B) omlaag+alleen
+    positieve kracht → geen kader; (C) omhoog+positief ≥50% → kader
+    uitsluitend op de positieve kant; (D) een langzame, lineaire
+    krachtopbouw over de hele beweging → geen ticks/onderschrift/voetnoot;
+    (E) een snelle opbouw (50% binnen 2° na het 10%-punt) → ticks en
+    onderschrift wél getoond; (F) omhoog+alleen negatieve kracht → geen
+    kader. Alle 6 scenario's gaven het verwachte resultaat. **Niet visueel
+    gecontroleerd** in een echte browser/PDF-viewer.
 - **2026-08-20** (vervolg: PDF-rapport nu altijd 1 pagina, op verzoek, in
   `FAR-500.html`): de tweede pagina (uitgebreide criteria-uitleg C1-C4) is
   volledig verwijderd. `buildAnalyseReportCanvas()` tekent de criteria-tekst
