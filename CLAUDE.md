@@ -47,6 +47,34 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-20** (vervolg: upload/rapport-blok verplaatst naar onderaan op
+  smal scherm + 2-staps auto-scroll, op verzoek, in `FAR-500.html`):
+  - **Upload-code + "Maak rapportage"-knop op een smal scherm (<800px) nu
+    ook helemaal naar onderaan**, ná de "Kracht vs. hoek"-grafiek (was
+    voorheen na de Verloop-grafiek, vóór "Kracht vs. hoek"). Upload-code-veld
+    + knoppen + status-hints (`ghStatus`/`dlFallback`) zaten los in de DOM;
+    samen gewrapt in een nieuwe `#reportSection`-container zodat ze in 1x
+    verplaatst kunnen worden. `placeVerloopChart()` is hernoemd naar
+    `placeCharts()` en verplaatst nu zowel de Verloop-grafiek (tussen
+    Start/Stop en `#reportSection`) als `#reportSection` zelf (naar ná
+    `#krachtHoekChartWrap`, de nieuwe id op de "Kracht vs. hoek"-chart-wrap)
+    -- en zet op een breed scherm beide weer terug naar hun oorspronkelijke
+    positie (`reportSectionHome`, éénmalig bij laden vastgelegd).
+  - **Auto-scroll bij Start is nu 2 stappen**: eerst naar de Verloop-grafiek
+    (ongewijzigd, direct), en na 2 seconden door naar de "Kracht vs.
+    hoek"-grafiek (`scrollToChartsOnStart()`, vervangt de eerdere
+    `scrollToVerloopChart()`, aangeroepen vanuit zowel `$("btnStart")
+    .onclick` als het device-start-pad in `onData()`).
+  - **Getest**: `node --check`, en een jsdom-run die bevestigt dat bij het
+    versmallen van het scherm (gesimuleerde `matchMedia`-toggle) de Verloop-
+    grafiek tussen Start/Stop en `#reportSection` terechtkomt, dat
+    `#reportSection` daarna ná `#krachtHoekChartWrap` staat, en dat beide bij
+    verbreden weer exact terug op hun oorspronkelijke plek (na
+    `#startStopRow`, als eerste kind van `#chartsCol`) staan; en dat een
+    gesimuleerde Start-klik `scrollIntoView` eerst op de Verloop-chart-wrap
+    en ~2000ms later op de Kracht-vs-hoek-chart-wrap aanroept. **Niet
+    visueel gecontroleerd** in een echte browser (geen browser-tooling in
+    dit environment).
 - **2026-08-20** (vervolg: grote UI-herindeling + gecombineerde rapportknop +
   bestandsnaam met notitie + auto-scroll + rapport-opmaak, op verzoek, alles
   in `FAR-500.html`; plan vooraf goedgekeurd via plan-mode):

@@ -247,18 +247,23 @@
     </div>
 
     <!-- Upload-code + rapport-knoppen bewust onderaan: eerst Naam/Notities
-         en Handvat-posities invullen/vastleggen, dan pas rapporteren. -->
-    <div class="btns" id="reportBlock">
-      <div class="field wide" id="ghSecretField">
-        <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code" value="tijn">
+         en Handvat-posities invullen/vastleggen, dan pas rapporteren.
+         id="reportSection" omvat ook de status-hints, zodat het geheel op
+         een smal scherm in 1x naar het einde (na "Kracht vs. hoek") kan
+         verplaatst worden (zie placeVerloopChart()/matchMedia hieronder). -->
+    <div id="reportSection">
+      <div class="btns" id="reportBlock">
+        <div class="field wide" id="ghSecretField">
+          <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code" value="tijn">
+        </div>
+        <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
+        <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
+        <button id="btnReportPdf" class="wide" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat ook de XLSX op en upload naar GitHub">Maak rapportage + Analyse</button>
+        <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
       </div>
-      <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
-      <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
-      <button id="btnReportPdf" class="wide" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat ook de XLSX op en upload naar GitHub">Maak rapportage + Analyse</button>
-      <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
+      <div class="hint" id="ghStatus"></div>
+      <div class="hint" id="dlFallback"></div>
     </div>
-    <div class="hint" id="ghStatus"></div>
-    <div class="hint" id="dlFallback"></div>
   </section>
 
   <!-- ================= GRAFIEKEN ================= -->
@@ -275,7 +280,7 @@
       </div>
       <canvas id="tsCanvas" data-h="320"></canvas>
     </div>
-    <div class="chart-wrap">
+    <div class="chart-wrap" id="krachtHoekChartWrap">
       <h2>Kracht vs. hoek</h2>
       <canvas id="xyCanvas" data-h="630"></canvas>
     </div>
@@ -296,7 +301,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 13:51</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 14:08</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -323,19 +328,30 @@ const tsC=$("tsCanvas"), xyC=$("xyCanvas");
 
 // Op verzoek: op een smal scherm (<800px, zelfde grens als de CSS-kolom-
 // stapeling hieronder) moet de Verloop-grafiek zich tussen de Start/Stop-rij
-// en het upload/rapport-blok schuiven i.p.v. pas na de hele bedieningskolom
-// te verschijnen. Puur CSS kan dit niet (de twee kolommen zijn losse
-// DOM-subbomen) -- verplaats daarom de chart-wrap-node zelf. Een <canvas>
-// behoudt zijn 2D-context/pixelbuffer bij een DOM-verplaatsing, dus dit is
-// veilig t.o.v. tsC/fit()/redraw() hieronder.
+// en het upload/rapport-blok schuiven, en het upload/rapport-blok
+// (#reportSection) zelf helemaal naar onderaan verplaatsen, ná de "Kracht
+// vs. hoek"-grafiek -- i.p.v. dat beide na de hele bedieningskolom
+// verschijnen. Puur CSS kan dit niet (de twee kolommen zijn losse
+// DOM-subbomen) -- verplaats daarom de nodes zelf. Een <canvas> behoudt zijn
+// 2D-context/pixelbuffer bij een DOM-verplaatsing, dus dit is veilig t.o.v.
+// tsC/fit()/redraw() hieronder.
 const mqNarrow=window.matchMedia("(max-width:800px)");
-function placeVerloopChart(){
-  const chart=$("verloopChartWrap"), anchor=$("reportBlock"), chartsCol=$("chartsCol");
-  if(mqNarrow.matches) anchor.parentNode.insertBefore(chart, anchor);
-  else chartsCol.insertBefore(chart, chartsCol.firstChild);
+// Oorspronkelijke positie van #reportSection (vóór enige verplaatsing)
+// onthouden, zodat 'm op een breed scherm weer exact terugzet.
+const reportSectionHome=(()=>{ const el=$("reportSection"); return {parent:el.parentNode, next:el.nextSibling}; })();
+function placeCharts(){
+  const verloop=$("verloopChartWrap"), reportSection=$("reportSection");
+  const chartsCol=$("chartsCol"), krachtHoek=$("krachtHoekChartWrap");
+  if(mqNarrow.matches){
+    reportSection.parentNode.insertBefore(verloop, reportSection);
+    krachtHoek.parentNode.insertBefore(reportSection, krachtHoek.nextSibling);
+  } else {
+    chartsCol.insertBefore(verloop, chartsCol.firstChild);
+    reportSectionHome.parent.insertBefore(reportSection, reportSectionHome.next);
+  }
 }
-mqNarrow.addEventListener("change", placeVerloopChart);
-placeVerloopChart();
+mqNarrow.addEventListener("change", placeCharts);
+placeCharts();
 
 let geo={yHigh:null,angHigh:null,yLow:null,angLow:null,L:null,H:null,Lman:null,Hman:null,valid:false};
 let A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false};
@@ -388,11 +404,15 @@ function setConnected(on,name){
 function onDisconnect(){ setConnected(false); running=false; updateRun(); $("btnConnect").disabled=false; keepAwakeStop(); }
 async function send(cmd){ if(ctrlChar) await ctrlChar.writeValue(new TextEncoder().encode(cmd)); }
 // Op verzoek: zodra een meting start (via de UI-knop óf via de drukknop op
-// het device, zie de devLogging-tak in onData()) scrollt het scherm naar de
-// Verloop-grafiek, zodat direct zichtbaar is dat er meetwaarden binnenkomen.
-function scrollToVerloopChart(){ $("verloopChartWrap").scrollIntoView({behavior:"smooth", block:"start"}); }
+// het device, zie de devLogging-tak in onData()) scrollt het scherm eerst
+// naar de Verloop-grafiek (zodat direct zichtbaar is dat er meetwaarden
+// binnenkomen), en na 2s door naar de Kracht vs. hoek-grafiek.
+function scrollToChartsOnStart(){
+  $("verloopChartWrap").scrollIntoView({behavior:"smooth", block:"start"});
+  setTimeout(()=>{ $("krachtHoekChartWrap").scrollIntoView({behavior:"smooth", block:"start"}); }, 2000);
+}
 $("btnTare").onclick =()=>send("TARE");
-$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); loadedMeasMeta=null; send("START"); running=true; updateRun(); redraw(); keepAwakeStart(); scrollToVerloopChart(); };
+$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); loadedMeasMeta=null; send("START"); running=true; updateRun(); redraw(); keepAwakeStart(); scrollToChartsOnStart(); };
 $("btnStop").onclick =()=>{ send("STOP"); running=false; updateRun(); keepAwakeStop(); };
 
 /* ---------------- scherm actief houden tijdens een meting ---------------- */
@@ -577,7 +597,7 @@ function onData(e){
   // die de UI niet zelf initieerde.
   if(devLogging!==null){
     if(lastDevLogging!==null && devLogging!==lastDevLogging){
-      if(devLogging && !running){ samples=[]; resetAnalysis(); measStart=new Date(); running=true; updateRun(); redraw(); keepAwakeStart(); scrollToVerloopChart(); }
+      if(devLogging && !running){ samples=[]; resetAnalysis(); measStart=new Date(); running=true; updateRun(); redraw(); keepAwakeStart(); scrollToChartsOnStart(); }
       else if(!devLogging && running){ running=false; updateRun(); keepAwakeStop(); }
     }
     lastDevLogging=devLogging;
