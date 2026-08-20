@@ -92,7 +92,7 @@
   .compat.bad{display:block;background:rgba(229,86,75,.15);border-bottom:1px solid var(--bad);
               color:#ffd0cc;padding:11px 22px;font-size:13px;line-height:1.5}
   .compat.bad b{color:#fff}
-  @media (max-width:860px){
+  @media (max-width:800px){
     main{grid-template-columns:1fr}
     .col{overflow-y:visible;padding:16px}
     header{padding:14px 16px} header .sub{display:none}
@@ -100,6 +100,13 @@
     button{padding:12px 11px}            /* grotere tikdoelen */
     .field label{width:104px}
     .field input.num{width:70px}
+  }
+  /* Telefoon: minder padding zodat de grafiek/kaarten de breedte beter vullen. */
+  @media (max-width:480px){
+    .col{padding:8px}
+    .card{padding:10px 10px}
+    .chart-wrap{padding:10px 10px 6px}
+    main{gap:1px}
   }
 </style>
 </head>
@@ -118,79 +125,12 @@
 <main>
   <!-- ================= BEDIENING ================= -->
   <section class="col">
-    <div class="readrow">
-      <div class="readout force"><div class="lbl">Kracht</div>
-        <div class="val"><span id="forceVal">—</span><span class="unit">N</span></div></div>
-      <div class="readout angle"><div class="lbl">Hoek (gekalibreerd)</div>
-        <div class="val"><span id="angleVal">—</span><span class="unit">°</span></div></div>
-    </div>
-
-    <div class="card adv-only">
-      <h3>Sensor-oriëntatie (ruw) — kantelcontrole</h3>
-      <div class="calc"><span>X (pitch)</span><b><span id="rawX">—</span>°&nbsp;&nbsp;<span class="rng" id="rngX">—</span></b></div>
-      <div class="calc"><span>Y (roll)</span><b><span id="rawY">—</span>°&nbsp;&nbsp;<span class="rng" id="rngY">—</span></b></div>
-      <div class="calc"><span>Z (t.o.v. horiz.)</span><b><span id="rawZ">—</span>°&nbsp;&nbsp;<span class="rng" id="rngZ">—</span></b></div>
-      <button id="btnResetRange" style="margin-top:8px;width:100%">Reset bereik</button>
-      <div class="hint" style="margin-top:6px">De hoek wordt via een gekalibreerde 3D-vector bepaald (ongevoelig voor montage-scheefstand). X/Y/Z hierboven zijn puur diagnose: blijven ze onderling ongeveer constant, dan staat de sensor stabiel.</div>
-    </div>
-
-    <div class="banner" id="resultBanner">nog geen meting</div>
-    <div class="btns">
-      <button id="btnConnect" class="primary wide">Verbinden</button>
-      <button id="btnTare" class="adv-only" disabled>Tare 0°</button>
-      <button id="btnStop" disabled>Stop</button>
-      <button id="btnStart" class="primary" disabled>Start meting</button>
-      <button id="btnClear" class="danger adv-only" disabled>Wis device</button>
-      <button id="btnXlsx" class="primary wide adv-only" disabled>Meetgegevens XLSX</button>
-      <div class="field wide adv-only" id="c4OverrideField">
-        <label>Snelheid/versnelling (C4)</label>
-        <input id="vmaxOverride" class="num" type="number" step="1" title="Max snelheid (cm/s)">
-        <input id="amaxOverride" class="num" type="number" step="1" title="Max versnelling (cm/s²)">
-        <button id="btnC4Override" title="Overschrijft de snelheid/versnelling-limiet (kaart 'Limieten &amp; live') vóórdat het rapport gegenereerd wordt">Overschrijven</button>
-      </div>
-      <button id="btnCsv" class="adv-only" disabled>Download CSV</button>
-      <button id="btnDump" class="adv-only" disabled>Device-log</button>
-      <!-- Upload-code + rapport-knoppen bewust onderaan: eerst Naam/Notities
-           en Handvat-posities invullen/vastleggen, dan pas rapporteren. -->
-      <div class="field wide" id="ghSecretField">
-        <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code" value="tijn">
-      </div>
-      <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
-      <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
-      <button id="btnReportPdf" class="wide" disabled title="Vereist L en H (Handvat-posities → geometrie); wordt ook naar GitHub geüpload">Maak rapportage + Analyse PDF</button>
-      <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
-    </div>
-    <div class="hint" id="ghStatus"></div>
-    <div class="hint" id="dlFallback"></div>
+    <button id="btnConnect" class="primary wide">Verbinden</button>
 
     <div class="card" id="metingCard">
       <h3>Meting</h3>
       <div class="field" id="naamField"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Falco / Premium"></div>
       <div class="field" id="notitiesField"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. hoog / AzorTerschelling 28kg"></div>
-    </div>
-
-    <div class="card adv-only">
-      <h3>Oude meting laden (GitHub)</h3>
-      <div class="hint" style="margin-bottom:10px">
-        <a href="https://github.com/dynteq/far-500/releases/tag/recordings" target="_blank" rel="noopener" style="color:var(--cyan)">Alle bestanden bekijken op GitHub →</a>
-      </div>
-      <div class="field wide">
-        <select id="oldMeasSelect" style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
-          <option value="">— lijst wordt opgehaald… —</option>
-        </select>
-        <button id="btnOldMeasRefresh" title="Vernieuw lijst">↻</button>
-      </div>
-      <button id="btnOldMeasLoad" class="wide" disabled>Laden in het analyse-scherm</button>
-      <div class="hint" id="oldMeasStatus"></div>
-
-      <div class="field wide" style="margin-top:14px">
-        <select id="oldPdfSelect" style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
-          <option value="">— lijst wordt opgehaald… —</option>
-        </select>
-      </div>
-      <button id="btnOldPdfOpen" class="wide" disabled>PDF-rapport openen/downloaden</button>
-      <div class="hint" id="oldPdfStatus"></div>
-      <div class="hint" id="oldPdfDlFallback"></div>
     </div>
 
     <div class="card">
@@ -225,6 +165,61 @@
       </div>
     </div>
 
+    <div class="readrow">
+      <div class="readout force"><div class="lbl">Kracht</div>
+        <div class="val"><span id="forceVal">—</span><span class="unit">N</span></div></div>
+      <div class="readout angle"><div class="lbl">Hoek (gekalibreerd)</div>
+        <div class="val"><span id="angleVal">—</span><span class="unit">°</span></div></div>
+    </div>
+
+    <div class="card adv-only">
+      <h3>Sensor-oriëntatie (ruw) — kantelcontrole</h3>
+      <div class="calc"><span>X (pitch)</span><b><span id="rawX">—</span>°&nbsp;&nbsp;<span class="rng" id="rngX">—</span></b></div>
+      <div class="calc"><span>Y (roll)</span><b><span id="rawY">—</span>°&nbsp;&nbsp;<span class="rng" id="rngY">—</span></b></div>
+      <div class="calc"><span>Z (t.o.v. horiz.)</span><b><span id="rawZ">—</span>°&nbsp;&nbsp;<span class="rng" id="rngZ">—</span></b></div>
+      <button id="btnResetRange" style="margin-top:8px;width:100%">Reset bereik</button>
+      <div class="hint" style="margin-top:6px">De hoek wordt via een gekalibreerde 3D-vector bepaald (ongevoelig voor montage-scheefstand). X/Y/Z hierboven zijn puur diagnose: blijven ze onderling ongeveer constant, dan staat de sensor stabiel.</div>
+    </div>
+
+    <div class="banner" id="resultBanner">nog geen meting</div>
+    <div class="btns">
+      <button id="btnTare" class="adv-only" disabled>Tare 0°</button>
+      <button id="btnClear" class="danger adv-only" disabled>Wis device</button>
+      <button id="btnXlsx" class="primary wide adv-only" disabled>Meetgegevens XLSX</button>
+      <div class="field wide adv-only" id="c4OverrideField">
+        <label>Snelheid/versnelling (C4)</label>
+        <input id="vmaxOverride" class="num" type="number" step="1" title="Max snelheid (cm/s)">
+        <input id="amaxOverride" class="num" type="number" step="1" title="Max versnelling (cm/s²)">
+        <button id="btnC4Override" title="Overschrijft de snelheid/versnelling-limiet (kaart 'Limieten &amp; live') vóórdat het rapport gegenereerd wordt">Overschrijven</button>
+      </div>
+      <button id="btnCsv" class="adv-only" disabled>Download CSV</button>
+      <button id="btnDump" class="adv-only" disabled>Device-log</button>
+    </div>
+
+    <div class="card adv-only">
+      <h3>Oude meting laden (GitHub)</h3>
+      <div class="hint" style="margin-bottom:10px">
+        <a href="https://github.com/dynteq/far-500/releases/tag/recordings" target="_blank" rel="noopener" style="color:var(--cyan)">Alle bestanden bekijken op GitHub →</a>
+      </div>
+      <div class="field wide">
+        <select id="oldMeasSelect" style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
+          <option value="">— lijst wordt opgehaald… —</option>
+        </select>
+        <button id="btnOldMeasRefresh" title="Vernieuw lijst">↻</button>
+      </div>
+      <button id="btnOldMeasLoad" class="wide" disabled>Laden in het analyse-scherm</button>
+      <div class="hint" id="oldMeasStatus"></div>
+
+      <div class="field wide" style="margin-top:14px">
+        <select id="oldPdfSelect" style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
+          <option value="">— lijst wordt opgehaald… —</option>
+        </select>
+      </div>
+      <button id="btnOldPdfOpen" class="wide" disabled>PDF-rapport openen/downloaden</button>
+      <div class="hint" id="oldPdfStatus"></div>
+      <div class="hint" id="oldPdfDlFallback"></div>
+    </div>
+
     <div class="card adv-only">
       <h3>Limieten & live</h3>
       <label class="toggle"><input type="checkbox" id="limitsEnabled" checked>Snelheid/versnelling-limiet controleren</label>
@@ -242,11 +237,33 @@
       samples <b id="nSamples">0</b> · t <b id="lastT">0.00</b> s · accu <b id="bat">—</b> %<br>
       meting <b id="runState">gestopt</b>
     </div>
+
+    <!-- Start/Stop: bewust een eigen rij, links Start / rechts Stop, direct
+         vóór het rapportageblok -- op smalle schermen schuift de Verloop-
+         grafiek (zie matchMedia-logic verderop) hier vlak achter in. -->
+    <div class="btns" id="startStopRow">
+      <button id="btnStart" class="primary" disabled>Start meting</button>
+      <button id="btnStop" disabled>Stop</button>
+    </div>
+
+    <!-- Upload-code + rapport-knoppen bewust onderaan: eerst Naam/Notities
+         en Handvat-posities invullen/vastleggen, dan pas rapporteren. -->
+    <div class="btns" id="reportBlock">
+      <div class="field wide" id="ghSecretField">
+        <label>Upload-code</label><input id="ghSecret" type="password" placeholder="code" value="tijn">
+      </div>
+      <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
+      <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
+      <button id="btnReportPdf" class="wide" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat ook de XLSX op en upload naar GitHub">Maak rapportage + Analyse</button>
+      <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
+    </div>
+    <div class="hint" id="ghStatus"></div>
+    <div class="hint" id="dlFallback"></div>
   </section>
 
   <!-- ================= GRAFIEKEN ================= -->
-  <section class="col">
-    <div class="chart-wrap">
+  <section class="col" id="chartsCol">
+    <div class="chart-wrap" id="verloopChartWrap">
       <h2>Verloop — t in seconden</h2>
       <div class="legend">
         <span><i style="background:var(--cyan)"></i>kracht (N)</span>
@@ -279,7 +296,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 11:15</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 13:51</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -303,6 +320,22 @@ const dot=$("dot"), connTxt=$("connTxt");
 // gedeclareerd, dan gooide dat een TDZ-ReferenceError die de rest van het
 // script (incl. licht/donker-knop en Standard/Advanced-knop) liet afbreken.
 const tsC=$("tsCanvas"), xyC=$("xyCanvas");
+
+// Op verzoek: op een smal scherm (<800px, zelfde grens als de CSS-kolom-
+// stapeling hieronder) moet de Verloop-grafiek zich tussen de Start/Stop-rij
+// en het upload/rapport-blok schuiven i.p.v. pas na de hele bedieningskolom
+// te verschijnen. Puur CSS kan dit niet (de twee kolommen zijn losse
+// DOM-subbomen) -- verplaats daarom de chart-wrap-node zelf. Een <canvas>
+// behoudt zijn 2D-context/pixelbuffer bij een DOM-verplaatsing, dus dit is
+// veilig t.o.v. tsC/fit()/redraw() hieronder.
+const mqNarrow=window.matchMedia("(max-width:800px)");
+function placeVerloopChart(){
+  const chart=$("verloopChartWrap"), anchor=$("reportBlock"), chartsCol=$("chartsCol");
+  if(mqNarrow.matches) anchor.parentNode.insertBefore(chart, anchor);
+  else chartsCol.insertBefore(chart, chartsCol.firstChild);
+}
+mqNarrow.addEventListener("change", placeVerloopChart);
+placeVerloopChart();
 
 let geo={yHigh:null,angHigh:null,yLow:null,angLow:null,L:null,H:null,Lman:null,Hman:null,valid:false};
 let A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false};
@@ -354,8 +387,12 @@ function setConnected(on,name){
 }
 function onDisconnect(){ setConnected(false); running=false; updateRun(); $("btnConnect").disabled=false; keepAwakeStop(); }
 async function send(cmd){ if(ctrlChar) await ctrlChar.writeValue(new TextEncoder().encode(cmd)); }
+// Op verzoek: zodra een meting start (via de UI-knop óf via de drukknop op
+// het device, zie de devLogging-tak in onData()) scrollt het scherm naar de
+// Verloop-grafiek, zodat direct zichtbaar is dat er meetwaarden binnenkomen.
+function scrollToVerloopChart(){ $("verloopChartWrap").scrollIntoView({behavior:"smooth", block:"start"}); }
 $("btnTare").onclick =()=>send("TARE");
-$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); loadedMeasMeta=null; send("START"); running=true; updateRun(); redraw(); keepAwakeStart(); };
+$("btnStart").onclick=()=>{ samples=[]; resetAnalysis(); measStart=new Date(); loadedMeasMeta=null; send("START"); running=true; updateRun(); redraw(); keepAwakeStart(); scrollToVerloopChart(); };
 $("btnStop").onclick =()=>{ send("STOP"); running=false; updateRun(); keepAwakeStop(); };
 
 /* ---------------- scherm actief houden tijdens een meting ---------------- */
@@ -540,7 +577,7 @@ function onData(e){
   // die de UI niet zelf initieerde.
   if(devLogging!==null){
     if(lastDevLogging!==null && devLogging!==lastDevLogging){
-      if(devLogging && !running){ samples=[]; resetAnalysis(); measStart=new Date(); running=true; updateRun(); redraw(); keepAwakeStart(); }
+      if(devLogging && !running){ samples=[]; resetAnalysis(); measStart=new Date(); running=true; updateRun(); redraw(); keepAwakeStart(); scrollToVerloopChart(); }
       else if(!devLogging && running){ running=false; updateRun(); keepAwakeStop(); }
     }
     lastDevLogging=devLogging;
@@ -1026,7 +1063,12 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // TOPAX groter dan voorheen: bovenaan staan nu zowel de 135/170cm-
   // hoogtelabels als de omhoog-afstandtickmarks (2 rijen, zie verderop) --
   // buildAnalyseReportCanvas() gebruikt dezelfde *3.0-factor voor CHART_H.
-  const TOPAX=Math.round(AF*3.0), BOTAX=Math.round(AF*6.3);
+  // BOTAX verkleind (was *6.3): "hoek (°)" + de "*"-voetnoot staan nu compact
+  // links onder de hoek-as i.p.v. ver naar onder/gecentreerd. De laagste rij
+  // die nog moet passen is de "← omlaag"-labelregel op *4.2 -- vandaar *5.0
+  // i.p.v. verder omlaag. buildAnalyseReportCanvas() gebruikt dezelfde
+  // *5.0-factor voor CHART_H.
+  const TOPAX=Math.round(AF*3.0), BOTAX=Math.round(AF*5.0);
   const py=y+TOPAX, ph=h-TOPAX-BOTAX;
   const n=series.t_s.length;
   const X=d=>x+(clamp(d,ANGLE_MIN,ANGLE_MAX)-ANGLE_MIN)/(ANGLE_MAX-ANGLE_MIN)*w;
@@ -1208,6 +1250,7 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // verzoek, anders liepen kader en tickmarks niet meer gelijk). Omhoog-
   // tickmarks staan bovenaan de grafiek, omlaag-tickmarks vlak boven de
   // onderste (hoek-)as, elk met een groen onderschrift. ----
+  let showTickFootnote=false;
   if(L!=null && (upMove || downMove)){
     // Geeft de px van de middelste (10cm) tick terug, zodat het onderschrift
     // daar recht boven/onder gecentreerd kan worden i.p.v. op een vaste
@@ -1225,10 +1268,13 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
         ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif";
         if(atTop){
           ctx.beginPath(); ctx.moveTo(px,py-4); ctx.lineTo(px,py+10); ctx.stroke();
-          ctx.fillText(d.toFixed(0)+"cm", px, py-Math.round(AF*0.25));
+          // Op verzoek: bovenaan alleen bij 20cm nog een label (0/10 alleen
+          // de streep) -- minder drukte.
+          if(d===20) ctx.fillText(d.toFixed(0)+"cm", px, py-Math.round(AF*0.25));
         } else {
           ctx.beginPath(); ctx.moveTo(px,py+ph-10); ctx.lineTo(px,py+ph+4); ctx.stroke();
-          ctx.fillText(d.toFixed(0)+"cm", px, py+ph+Math.round(AF*2.8));
+          // Onderaan juist alleen bij 0cm nog een label (10/20 alleen de streep).
+          if(d===0) ctx.fillText(d.toFixed(0)+"cm", px, py+ph+Math.round(AF*2.8));
         }
       });
       return midPx;
@@ -1242,11 +1288,8 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     if(upMidPx!=null) ctx.fillText("* omhoog →", upMidPx, py-Math.round(AF*1.8));
     if(downMidPx!=null) ctx.fillText("* ← omlaag", downMidPx, py+ph+Math.round(AF*4.2));
     // Voetnoot alleen als er ook echt ticks getekend zijn (anders verwijst
-    // de "*" naar niets).
-    if(upMidPx!=null||downMidPx!=null){
-      ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="left";
-      ctx.fillText("* afgelegde afstand handvat vanaf start beweging", x+2, y+h-4);
-    }
+    // de "*" naar niets) -- wordt verderop, compact naast "hoek (°)", getekend.
+    showTickFootnote=(upMidPx!=null||downMidPx!=null);
   }
   ctx.textAlign="left";
 
@@ -1297,8 +1340,17 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
 
   // ---- kader + assen-labels ----
   ctx.strokeStyle="#666"; ctx.lineWidth=1; ctx.strokeRect(x,py,w,ph);
+  // Op verzoek: "hoek (°)" helemaal links, direct aansluitend onder de
+  // "-50°"-as-label (was gecentreerd en ver naar onder, met veel witruimte
+  // ertussen) -- de voetnoot bij de "*" (indien van toepassing) staat er nu
+  // direct onder, ook links uitgelijnd en compact.
+  ctx.textAlign="left"; ctx.fillStyle="#333"; ctx.font=(AF+1)+"px sans-serif";
+  ctx.fillText("hoek (°)", x, py+ph+Math.round(AF*2.15));
+  if(showTickFootnote){
+    ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif";
+    ctx.fillText("* afgelegde afstand handvat vanaf start beweging", x, py+ph+Math.round(AF*3.05));
+  }
   ctx.fillStyle="#333"; ctx.font=(AF+1)+"px sans-serif";
-  ctx.fillText("hoek (°)", x+w/2-26, py+ph+Math.round(AF*5.6));
   ctx.fillText("+"+FORCE_MAX.toFixed(0)+" N", x+4, py+Math.round(AF*1.07));
   ctx.fillText(FORCE_MIN.toFixed(0)+" N", x+4, py+ph-Math.round(AF*0.4));
 }
@@ -1329,7 +1381,7 @@ function buildAnalyseReportCanvas(){
   // CHART_H moet daarop worden afgestemd om de gevraagde 780px plot-hoogte
   // (30% boven de al 1.5x'e 600px) te behouden.
   const CHART_AXIS_FONT=38;
-  const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*6.3);
+  const CHART_H=780+Math.round(CHART_AXIS_FONT*3.0)+Math.round(CHART_AXIS_FONT*5.0);
 
   // Op verzoek: het rapport is nu altijd 1 pagina (de uitgebreide
   // criteria-uitleg, die voorheen als los blok op pagina 2 stond, is
@@ -1340,7 +1392,7 @@ function buildAnalyseReportCanvas(){
   // 3 losse regels.
   const TOP_BLOCK_H = 60 + 70 + 75 + 15 + 7*lineH;                 // titel + metadata-regel + "Setup" + 7 rijen
   const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+70;         // "Uitkomst" + kop + 4 rijen + eindoordeel
-  const CHART_TITLE_GAP = 50+60+20;                                // ruimte + titelregel vóór de grafiek
+  const CHART_TITLE_GAP = 50+60+32+20;                             // ruimte + titelregel + toelichtingsregel vóór de grafiek
   const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + CHART_TITLE_GAP + CHART_H + PAD;
 
   const canvas=document.createElement("canvas");
@@ -1350,15 +1402,32 @@ function buildAnalyseReportCanvas(){
   ctx.fillStyle="#111";
   let y=PAD;
 
-  // ---- Bovenste helft van pagina 1: titel + compacte metadata + setup ----
-  ctx.font="bold 60px sans-serif"; ctx.fillText("FAR-500 — bedienkracht-analyse", PAD, y+=60);
-  ctx.font="35px sans-serif"; y+=70;
-  const metaParts=[$("naam").value||"(naam onbekend)"];
-  if($("notities").value) metaParts.push($("notities").value);
-  metaParts.push(loadedMeasMeta?loadedMeasMeta.datumStr:(measStart||new Date()).toLocaleString('nl-NL'));
-  ctx.fillText(metaParts.join("   —   "), PAD, y);
-  y+=75;
-  ctx.font="bold 40px sans-serif"; ctx.fillText("Setup", PAD, y); y+=15;
+  // ---- Bovenste helft van pagina 1: kop + compacte metadata + setup ----
+  // Op verzoek herontworpen: rechts uitgelijnd "FAR-500" in een dun
+  // lettergewicht met daaronder klein "bedienkracht-analyse"; links
+  // uitgelijnd dikgedrukt de naam (Merk/Type), daaronder dikgedrukt de
+  // notitie gevolgd door (niet-dik) datum/tijd. Zelfde totale hoogte (205px)
+  // als voorheen, dus TOP_BLOCK_H/H hieronder blijven ongewijzigd correct.
+  ctx.textAlign="right";
+  ctx.font="300 46px sans-serif"; ctx.fillStyle="#111";
+  ctx.fillText("FAR-500", W-PAD, y+46);
+  ctx.font="300 24px sans-serif"; ctx.fillStyle="#555";
+  ctx.fillText("bedienkracht-analyse", W-PAD, y+76);
+  ctx.textAlign="left";
+
+  ctx.font="bold 42px sans-serif"; ctx.fillStyle="#111";
+  ctx.fillText($("naam").value||"(naam onbekend)", PAD, y+42);
+  const notitie=$("notities").value;
+  const datumStr=loadedMeasMeta?loadedMeasMeta.datumStr:(measStart||new Date()).toLocaleString('nl-NL');
+  if(notitie){
+    ctx.font="bold 30px sans-serif"; ctx.fillText(notitie, PAD, y+80);
+    const nw=ctx.measureText(notitie).width;
+    ctx.font="30px sans-serif"; ctx.fillText("   —   "+datumStr, PAD+nw, y+80);
+  } else {
+    ctx.font="30px sans-serif"; ctx.fillText(datumStr, PAD, y+80);
+  }
+  y+=205;
+  ctx.font="bold 40px sans-serif"; ctx.fillStyle="#111"; ctx.fillText("Setup", PAD, y); y+=15;
   ctx.font="33px sans-serif";
   const naText=v=>(v==null||v===""||isNaN(v))?"—":v;
   const setupRows=[
@@ -1392,7 +1461,12 @@ function buildAnalyseReportCanvas(){
   // ---- Grafiek (nog steeds pagina 1, direct na het eindoordeel) ----
   y+=50+60;
   ctx.fillStyle="#111"; ctx.font="bold 35px sans-serif";
-  ctx.fillText("Kracht vs. hoek  —  groen: toegestaan | oranje: 150%-breakaway-marge (eerste 20cm) | rood: afkeur (buiten envelope of >170cm hoogte)", PAD, y); y+=20;
+  ctx.fillText("Kracht vs. hoek", PAD, y); y+=32;
+  // Toelichting op een eigen regel en niet dikgedrukt (op verzoek, stond
+  // eerst achter de titel op dezelfde regel, in bold).
+  ctx.font="24px sans-serif"; ctx.fillStyle="#555";
+  ctx.fillText("groen: toegestaan | oranje: 150%-breakaway-marge (eerste 20cm) | rood: afkeur (buiten envelope of >170cm hoogte)", PAD, y); y+=20;
+  ctx.fillStyle="#111";
   drawAngleForceChart(ctx, PAD, y, W-2*PAD, CHART_H, series, res, CHART_AXIS_FONT);
   y+=CHART_H;
 
@@ -1413,8 +1487,12 @@ function buildReportDataRows(series,res){
   }
   return rows;
 }
+// Op verzoek: de rapport-bestandsnaam neemt ook de notitie (Positie/Belasting)
+// mee -- een lange maar praktische naam, zodat een los .xlsx/.pdf-bestand
+// (bv. in de GitHub-release-lijst) zonder het te openen al herkenbaar is.
 function fnameSuffix(suffix,ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
-  return tsStamp()+"_"+nm+"_"+suffix+"."+ext; }
+  const note=$("notities").value.trim().replace(/[^\w\-]+/g,"_").slice(0,60);
+  return tsStamp()+"_"+nm+(note?"_"+note:"")+"_"+suffix+"."+ext; }
 
 /* ---------------- export ---------------- */
 const r2=x=>(x==null||isNaN(x))?"":Math.round(x*100)/100;
@@ -1515,18 +1593,24 @@ $("btnReportXlsx").onclick=async()=>{
   }catch(e){ alert(e.message); }
   finally{ updateReportButtons(); }
 };
+// "Maak rapportage + Analyse" (op verzoek de hoofdknop -- bouwt de canvas
+// maar 1x en slaat daarvan zowel de XLSX als de PDF op, i.p.v. dat de
+// gebruiker apart nog op "Rapportage + Analyse XLSX" moet klikken).
 $("btnReportPdf").onclick=async()=>{
   if(!reportPrereqsOk()) return;
   const btn=$("btnReportPdf"); btn.disabled=true;
   try{
-    const {canvas, jpegBytes}=await buildAnalyseReportAssets();
-    const blob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
+    const {canvas, series, res, jpegBytes}=await buildAnalyseReportAssets();
+    const dataRows=buildReportDataRows(series,res);
+    const xlsxBlob_=buildReportXlsxBlob(jpegBytes, canvas.width, canvas.height, dataRows);
+    download(fnameSuffix("rapport","xlsx"), xlsxBlob_);
+    const pdfBlob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
     const name=fnameSuffix("analyse","pdf");
-    download(name, blob);
+    download(name, pdfBlob);
     // Op verzoek: in zowel Standard als Advanced wordt het PDF-rapport ook
     // altijd naar GitHub geüpload (zelfde relay/upload-code als de andere
     // "Naar GitHub"-knoppen) -- niet alleen lokaal gedownload.
-    await uploadToGitHub(blob, name, "ghStatus", "btnReportPdf");
+    await uploadToGitHub(pdfBlob, name, "ghStatus", "btnReportPdf");
   }catch(e){ alert(e.message); }
   finally{ updateReportButtons(); }
 };

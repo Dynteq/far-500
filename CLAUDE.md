@@ -47,6 +47,88 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-20** (vervolg: grote UI-herindeling + gecombineerde rapportknop +
+  bestandsnaam met notitie + auto-scroll + rapport-opmaak, op verzoek, alles
+  in `FAR-500.html`; plan vooraf goedgekeurd via plan-mode):
+  - **Linker kolom (bediening) herschikt**: Verbinden staat nu helemaal
+    boven, direct daaronder de "Meting"-kaart (naam/notities) en de
+    "Handvat-posities"-kaart. Daarna (ongewijzigde inhoud, alleen verplaatst)
+    de Kracht/Hoek-uitlezing, sensor-oriëntatie, de banner, een kleinere
+    knoppengroep (Tare/Wis device/Meetgegevens XLSX/C4-override/CSV/
+    Device-log), "Oude meting laden", "Limieten & live", de meta-regel, dan
+    een nieuwe **Start/Stop-rij** (2 kolommen, Start links/Stop rechts — was
+    Stop-vóór-Start in 1 grote gemengde knoppengrid) en tot slot het
+    upload/rapport-blok (`#reportBlock`).
+  - **Grafiek schuift in op smal scherm (<800px)**: een `matchMedia`-listener
+    (`placeVerloopChart()`, gedeclareerd direct na `tsC`/`xyC`) verplaatst de
+    Verloop-`chart-wrap`-node (`#verloopChartWrap`) fysiek tussen de
+    Start/Stop-rij en `#reportBlock` zodra het scherm smaller is dan 800px,
+    en legt 'm terug als eerste kind van de grafieken-kolom (`#chartsCol`)
+    zodra het scherm weer breder wordt. Een `<canvas>` behoudt zijn
+    2D-context/pixelbuffer bij zo'n DOM-verplaatsing (bevestigd, geen
+    her-render nodig). Bestaande CSS-breakpoint van 860px naar 800px
+    gelijkgetrokken zodat kolomstapeling en deze reparent gelijktijdig
+    triggeren. Telefoon-only sub-breakpoint (≤480px) toegevoegd die
+    `.col`/`.card`/`.chart-wrap`-padding verder verkleint voor meer
+    bruikbare breedte.
+  - **Eén rapportknop**: "Maak rapportage + Analyse PDF" heet nu **"Maak
+    rapportage + Analyse"** en slaat bij één klik zowel de XLSX
+    (`buildReportXlsxBlob`) als de PDF (`buildAnalysisPdfBlob`) op — beide
+    gebouwd uit hetzelfde canvas/asset-resultaat van 1x
+    `buildAnalyseReportAssets()` (geen dubbele render). Upload naar GitHub
+    blijft zoals voorheen aan de PDF gekoppeld. De losse "Rapportage +
+    Analyse XLSX"-knop (adv-only, geen PDF/upload) blijft ongewijzigd bestaan
+    voor wie dat losse pad nog wil.
+  - **Bestandsnaam bevat nu ook de notitie**: `fnameSuffix()` (gebruikt door
+    de rapport-exports) plakt de gesaniteerde "Notities"-tekst (max 60
+    tekens) tussen naam en suffix, bv.
+    `20260820_..._Falco_Premium_hoog_TestLading_28kg_analyse.pdf`. Bewust
+    beperkt tot de rapport-bestanden (`fname()`, de ruwe Meetgegevens-XLSX/
+    CSV, blijft ongewijzigd).
+  - **Auto-scroll naar de Verloop-grafiek bij Start**: zowel bij
+    `$("btnStart").onclick` als het device-geïnitieerde start-pad in
+    `onData()` (drukknop op het device) scrollt de pagina nu naar
+    `#verloopChartWrap` (`scrollIntoView({behavior:"smooth",block:"start"})`),
+    zodat direct zichtbaar is dat er data binnenkomt.
+  - **Drie kleine rapport/grafiek-opmaakfixes** (`drawAngleForceChart()`/
+    `buildAnalyseReportCanvas()`): (1) de toelichting "groen: toegestaan |
+    oranje: ... | rood: ..." staat nu op een eigen regel onder de titel
+    "Kracht vs. hoek", kleiner en niet-bold (was op dezelfde regel, bold);
+    (2) de 0/10/20cm-tickmarks tonen nu alleen nog een tekstlabel bij de
+    uiterste punten — bovenaan (omhoog) alleen bij 20cm, onderaan (omlaag)
+    alleen bij 0cm (10cm en de andere kant houden alleen de streep, geen
+    tekst); (3) "hoek (°)" staat nu links uitgelijnd direct onder de
+    "-50°"-as (was gecentreerd, ver naar onder met veel witruimte), met de
+    "*"-voetnoot direct daaronder, ook links — `BOTAX` (en de bijpassende
+    `CHART_H`-factor) teruggebracht van `AF*6.3` naar `AF*5.0` omdat er nu
+    veel minder onderaan-ruimte nodig is.
+  - **Rapport-kop herontworpen**: rechts uitgelijnd "FAR-500" in een dun
+    lettergewicht (`"300 46px sans-serif"`) met daaronder klein
+    "bedienkracht-analyse"; links uitgelijnd dikgedrukt de naam (Merk/Type),
+    daaronder dikgedrukt de notitie gevolgd door (niet-dik) datum/tijd op
+    dezelfde regel. Zelfde totale hoogte (205px) als de vorige titel/
+    metadata-regel, dus geen wijziging nodig aan `TOP_BLOCK_H`.
+  - **Getest**: `node --check`, en een uitgebreide jsdom-run die (a) de
+    nieuwe DOM-volgorde bevestigt (Connect < Meting < Handvat; Start/Stop-rij
+    < reportBlock; Start vóór Stop binnen die rij); (b) de `matchMedia`-
+    reparent in beide richtingen (smal → chart tussen Start/Stop en
+    reportBlock; breed → chart terug als eerste kind van de grafieken-
+    kolom); (c) dat `fnameSuffix()` de notitie correct saniteert/opneemt; (d)
+    dat de gecombineerde knop precies 1x download() voor de XLSX + 1x voor de
+    PDF aanroept en 1x uploadToGitHub(); (e) dat `scrollIntoView` op
+    `#verloopChartWrap` aangeroepen wordt bij Start; (f) met een dataset met
+    een échte snelle breakaway: de titel/toelichting op gescheiden regels
+    met het juiste lettertype, dat alleen "20cm" (boven) en "0cm" (onder) nog
+    getekend worden, dat "hoek (°)" en de voetnoot links uitgelijnd op
+    dezelfde x staan met de voetnoot direct onder de as-titel, en dat de
+    nieuwe koptekst-elementen (FAR-500/bedienkracht-analyse rechts,
+    naam/notitie+datum links) met de juiste uitlijning/lettergewicht
+    getekend worden. **Niet visueel gecontroleerd** in een echte browser
+    (geen browser-tooling in dit environment) — graag zelf even doorklikken:
+    Connect→Meting→Handvat-volgorde, Start/Stop-layout, het smal-scherm-
+    gedrag (venster smaller maken dan 800px) inclusief de auto-scroll bij
+    Start, en een PDF/XLSX genereren via de nieuwe "Maak rapportage +
+    Analyse"-knop.
 - **2026-08-20** (vervolg: bugfix "handvathoogte" overlapte nog steeds met
   "135cm", op verzoek, in `FAR-500.html`, `drawAngleForceChart()`): de vorige
   fix (build 10:01) mat de tekstbreedte, maar klemde de linkerpositie ook
