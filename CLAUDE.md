@@ -47,6 +47,65 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-20** (ruisfilter op hoek/positie-signaal + 3 opmaakfixes, alles
+  in `FAR-500.html`):
+  - **Ruis op het hoek/positie-signaal gefixt** (op verzoek, na de eerdere
+    analyse van `20260731_153533_Falco_Premium`). Twee expliciete keuzes zijn
+    vooraf met de gebruiker afgestemd via `AskUserQuestion` (verandert
+    kernlogica van de C1-C4-engine, dus niet zomaar aangenomen):
+    (1) **scope = overal** — dezelfde gladgestreken `A.arc`/`A.ht` wordt
+    gebruikt voor zowel de bewegingsdetectie (`segmentMoves()`, ankers,
+    envelope) als de getoonde afgelegde-afstand/handvathoogte-cijfers (i.p.v.
+    een losse kopie alleen voor detectie); (2) **filtersterkte = hergebruik
+    `smooth4()`** (4-punts voortschrijdend gemiddelde, dezelfde als al voor
+    snelheid/versnelling gebruikt werd) i.p.v. een breder filter. Concreet:
+    `analyze()` past nu `A.arc=smooth4(A.arc); A.ht=smooth4(A.ht);` toe
+    direct na de ruwe hoek→positie/hoogte-omrekening, vóór de
+    snelheid/versnelling-afleiding (die dus nu op een al gladgestreken
+    positie werkt, en zelf ook weer smooth4() krijgt — een dubbele demping,
+    bewust, zelfde patroon als eerder al voor snelheid/versnelling). Ruwe
+    device-samples (t/deg/N) in CSV/XLSX-export blijven ongewijzigd — alleen
+    de AFGELEIDE analysewaarden zijn gladgestreken.
+  - **Getest**: een jsdom-run met een expliciet ingebouwde ruis-"blip" (korte
+    hoek-nudge net over de REV_HYST-hysterese, gevolgd door de échte,
+    geleidelijke krachtopbouw) en losse idle-periodes met kleine hoek/kracht-
+    jitter: piek-|versnelling| tijdens idle nu 22,2 cm/s² tegenover 133,2
+    cm/s² tijdens de werkelijke beweging (~6x marge, was voorheen in dezelfde
+    orde van grootte) — het gemelde "onrealistische versnelling tijdens
+    loze meting"-probleem is dus merkbaar verminderd. Bij een kunstmatig
+    grote/aangehouden ruis-blip (bewust fors ingesteld om de grens te
+    testen) kan `segmentMoves()` nog steeds oversegmenteren — dat is de
+    geaccepteerde afweging van de gekozen 4-punts filtersterkte (breder
+    filter was het alternatief, maar geeft meer vertraging op het echte
+    bewegingsbegin); als dit met echte data nog voorkomt is REV_HYST
+    verhogen de volgende stap, nog niet gedaan.
+  - **"handvathoogte"-label stond nog niet altijd volledig links van de
+    135cm-streep** (bug in de fix van hierboven/gisteren): de tekst werd
+    met een vast pixel-offset rechts uitgelijnd tegen de 135cm-streep gezet,
+    zonder de werkelijke tekstbreedte te kennen — bij een meting waarbij de
+    135cm-hoogte dicht bij de linkerrand van de grafiek valt, liep de tekst
+    zo van de grafiek af. Nu wordt de breedte met `ctx.measureText()` opgemeten
+    en de starpositie geklemd op de linkerrand van de grafiek (`x+4`) als er
+    niet genoeg ruimte is.
+  - **Onderschriften bij de 0/10/20cm-tickmarks verkort** (op verzoek, te
+    lang): "afgelegde afstand handvat start beweging omhoog →"/"...←omlaag"
+    zijn nu "* omhoog →"/"* ← omlaag"; de weggehaalde tekst staat als
+    voetnoot ("* afgelegde afstand handvat vanaf start beweging") helemaal
+    linksonder in de grafiek (zowel live UI als PDF/XLSX, gedeelde
+    tekencode in `drawAngleForceChart()`).
+  - **Getest**: `node --check`, en een jsdom-run door de complete
+    `btnOverridePositions→analyze()→buildAnalyseReportCanvas()`-pijplijn met
+    synthetische ruisrijke samples: bevestigt de piek-versnelling-cijfers
+    hierboven, dat de oude lange onderschriften nergens meer getekend worden
+    en de verkorte "* omhoog/omlaag"-varianten + de voetnoot wél, en dat
+    "handvathoogte" (breedte via de gestubde `measureText()`) altijd
+    volledig vóór (links van) de 135cm-tekst eindigt. **Niet visueel
+    gecontroleerd** in een echte browser/PDF-viewer, en ook niet tegen de
+    exacte geometrie van een echte export (bv. Falco Premium) waarbij het
+    handvathoogte-label eerder al fout stond — graag zelf even een PDF
+    genereren met een meting waarbij 135cm dicht bij de linkerrand van de
+    grafiek valt en de nieuwe versnellingscijfers op een echte, ruisige
+    meting (bv. opnieuw `20260731_153533_Falco_Premium`) controleren.
 - **2026-08-19** (vervolg 8: opmaakfixes grafiek/PDF + eindoordeel-kader
   verkleind, op verzoek, alles in `FAR-500.html`):
   - **Pijltjes weg bij de 0/10/20cm-tickmarks** ("↑"/"↓" achter "0cm" etc.) —

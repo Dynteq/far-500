@@ -279,7 +279,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-19 17:05</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 10:01</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -822,6 +822,15 @@ function analyze(){
       A.arc[i]=L*(th0-th);                                   // cm, 0 bij start (laag), + = omhoog
       A.ht[i]=(Hh!=null)?(Hh-L*Math.sin(th)):NaN;            // handvathoogte tov grond
     }
+    // Sensorruis op de hoek (vooral merkbaar tijdens idle/loze stukken aan
+    // begin/eind van een meting) plantte zich anders ongefilterd door naar
+    // de bewegingsdetectie (segmentMoves() op arc_cm) EN de getoonde
+    // afgelegde-afstand/handvathoogte-cijfers -- dat gaf zowel onrealistische
+    // versnellingspieken (afgeleide van ruis) als een verkeerd gedetecteerd
+    // bewegingsbegin (een klein ruis-"blipje" werd als apart, eerder bewegingsstuk
+    // gezien). Zelfde smooth4() als snelheid/versnelling, nu ook op de
+    // positie/hoogte zelf, dus overal (segmentatie + gerapporteerde waarden).
+    A.arc=smooth4(A.arc); A.ht=smooth4(A.ht);
     for(let i=0;i<n;i++) A.spd[i]=derivAt(i,A.arc,A.ts);
     A.spd=smooth4(A.spd);
     for(let i=0;i<n;i++) A.acc[i]=derivAt(i,A.spd,A.ts);
@@ -1167,8 +1176,15 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     ctx.font=AF+"px sans-serif";
   });
   if(px135!=null){
-    ctx.textAlign="right"; ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
-    ctx.fillText("handvathoogte", px135-Math.round(AF*0.6), py-Math.round(AF*1.1));
+    // Rechts uitgelijnd tegen de 135cm-streep zetten was niet altijd genoeg
+    // (bij sommige metingen ligt die streep dicht bij de linkerrand van de
+    // grafiek, waardoor de tekst er half vanaf liep) -- meet de werkelijke
+    // tekstbreedte en klem 'm zo nodig tegen de linkerrand van de grafiek.
+    ctx.font="bold "+(AF+1)+"px sans-serif";
+    const hLabel="handvathoogte", hw=ctx.measureText(hLabel).width, gap=Math.round(AF*0.6);
+    let hx=px135-gap-hw; if(hx<x+4) hx=x+4;
+    ctx.textAlign="left"; ctx.fillStyle="#222";
+    ctx.fillText(hLabel, hx, py-Math.round(AF*1.1));
   }
   ctx.textAlign="left";
 
@@ -1205,9 +1221,17 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     };
     const upMidPx=drawArcTicks(upMove,upCross,1,true);
     const downMidPx=drawArcTicks(downMove,downCross,-1,false);
+    // Verkorte onderschriften (op verzoek, "afgelegde afstand handvat start
+    // beweging" was te lang) -- het weggehaalde stuk staat als voetnoot bij
+    // de asterisk, helemaal linksonder de grafiek (zie verderop).
     ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="center";
-    if(upMidPx!=null) ctx.fillText("afgelegde afstand handvat start beweging omhoog →", upMidPx, py-Math.round(AF*1.8));
-    if(downMidPx!=null) ctx.fillText("afgelegde afstand handvat start beweging ← omlaag", downMidPx, py+ph+Math.round(AF*4.2));
+    if(upMidPx!=null) ctx.fillText("* omhoog →", upMidPx, py-Math.round(AF*1.8));
+    if(downMidPx!=null) ctx.fillText("* ← omlaag", downMidPx, py+ph+Math.round(AF*4.2));
+  }
+  ctx.textAlign="left";
+  if(L!=null && (upMove||downMove)){
+    ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="left";
+    ctx.fillText("* afgelegde afstand handvat vanaf start beweging", x+2, y+h-4);
   }
   ctx.textAlign="left";
 
