@@ -47,6 +47,71 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-21** (bugfix combinatieknop XLSX+PDF+GitHub + nieuwe dropdown om
+  een individuele device-geschiedenis-meting te laden, op verzoek, alles in
+  `FAR-500.html`):
+  - **Aanleiding**: bij metingen op 2026-08-20 in het veld (Standard mode) gaf
+    "Maak rapportage + Analyse" wel een PDF maar geen XLSX, en kwam er niets
+    op GitHub terecht. Twee losse, plausibele oorzaken geïdentificeerd (geen
+    van beide met zekerheid reproduceerbaar zonder de exacte browser/locatie
+    van gisteren, dus beide defensief gefixt):
+    (1) **`download()` triggerde 2 automatische bestandsdownloads
+    (XLSX daarna PDF) zonder pauze ertussen** — sommige browsers blokkeren
+    een 2e automatische download die te snel na de 1e vanuit script komt.
+    Nu wacht de combinatieknop 400ms tussen de XLSX- en de PDF-download.
+    Ook revoked `download()` de blob-URL niet meer meteen na `a.click()`
+    (nu na 3s) — te vroeg revoken kan op mobiele browsers een net-gestarte
+    download laten mislukken.
+    (2) **De "niet gedownload? tik op deze link"-fallbacklink (`#dlFallback`,
+    nodig op Bluefy/iOS-webviews die `a.click()`-downloads negeren) werd door
+    de PDF overschreven** — beide bestanden deelden 1 fallback-element, dus
+    als de gebruiker op die link moest terugvallen was de XLSX-link al
+    verdwenen tegen de tijd dat de PDF klaar was. `download()`/
+    `showDownloadFallback()` ondersteunen nu `append` — de combinatieknop
+    toont nu altijd beide bestandslinks naast elkaar.
+    (3) **GitHub-upload had geen retry**: als de upload mislukt (bv. geen
+    netwerk op de meetlocatie, zoals gisteren waarschijnlijk het geval was),
+    werd dat alleen gemeld in de kleine `ghStatus`-hint en waren de lokale
+    bestanden verder de enige uitkomst. Nieuwe knop **"Opnieuw uploaden naar
+    GitHub"** (`btnGhRetry`, naast `ghStatus`) verschijnt nu zodra de upload
+    binnen de combinatieknop mislukt, en bewaart het al-gebouwde PDF-blob
+    (`lastReportUpload`) zodat je het later (met verbinding) alsnog kan
+    uploaden zonder het rapport opnieuw te moeten genereren.
+  - **Nieuwe dropdown "Geschiedenis" (advanced mode)**: de al bestaande
+    "Geschiedenis — laatste metingen op device"-kaart (`#histWrap`) stond
+    hardcoded op `display:none` in beide modi (zie sessienotitie 2026-08-19
+    hieronder) — dat is nu verwijderd, de kaart is weer zichtbaar in Advanced
+    mode (via de bestaande `adv-only`-klasse, blijft verborgen in Standard).
+    Na "Importeer geschiedenis" is er nu, naast de bestaande tabel/Excel-
+    export, ook een dropdown (`#histLoadSelect`, nieuwste meting boven) +
+    knop **"Meting laden in analysescherm"** (`#btnHistLoad`) die een
+    individuele meting (op `#MEAS`-nummer) rechtstreeks als `samples` in het
+    analysescherm zet — zelfde soort samples-vervanging als "Oude meting
+    laden (GitHub)" (`btnOldMeasLoad`), maar zonder meta (de device-
+    geschiedenis bevat alleen t/deg/N, geen Naam/Notities/Handvat-posities),
+    dus die velden blijven staan zoals al ingevuld. Zo kunnen de metingen die
+    gisteren als drukknop-sessies op het device zijn gelogd (recorder-teller
+    stond op 49) alsnog stuk voor stuk door de C1-C4-analyse gehaald worden.
+  - **Getest**: `node --check`, en een uitgebreide jsdom-run (20 checks) die
+    (a) bevestigt dat `#histWrap` niet meer geforceerd verborgen is; (b) een
+    synthetisch device-log met 2 `#MEAS`-blokken door `importHistory()` haalt
+    en controleert dat de dropdown correct gevuld is (nieuwste eerst) en dat
+    "Meting laden" de juiste samples in `samples[]` zet; (c) dat `download()`
+    met `append=true` beide bestandslinks in `#dlFallback` laat staan i.p.v.
+    de eerste te overschrijven; (d) dat `uploadToGitHub()` nu een boolean
+    teruggeeft en dat de retry-knop verschijnt/verdwijnt op het juiste moment;
+    (e) de **volledige combinatieknop end-to-end** met een synthetische
+    up-beweging + `btnOverridePositions` (geen BLE nodig): zowel bij een
+    succesvolle als bij een mislukte GitHub-upload staan achteraf altijd
+    beide bestandslinks (XLSX+PDF) klaar, en bij een mislukte upload
+    verschijnt de retry-knop terwijl de lokale bestanden toch gewoon
+    beschikbaar blijven. **Niet visueel gecontroleerd** in een echte browser
+    (geen browser-tooling in dit environment) — met name de vermoede
+    root cause (browser-blokkade van 2 snelle automatische downloads) is
+    aannemelijk maar niet 1-op-1 reproduceerbaar geweest; graag bij de
+    volgende veldmeting bevestigen dat nu zowel XLSX als PDF aankomen (evt.
+    via de nieuwe fallback-links) en, als er toen geen netwerk was, de
+    nieuwe "Opnieuw uploaden naar GitHub"-knop proberen.
 - **2026-08-20** (vervolg: upload/rapport-blok verplaatst naar onderaan op
   smal scherm + 2-staps auto-scroll, op verzoek, in `FAR-500.html`):
   - **Upload-code + "Maak rapportage"-knop op een smal scherm (<800px) nu

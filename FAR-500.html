@@ -262,6 +262,7 @@
         <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
       </div>
       <div class="hint" id="ghStatus"></div>
+      <button id="btnGhRetry" class="wide" style="display:none;margin-top:6px">Opnieuw uploaden naar GitHub</button>
       <div class="hint" id="dlFallback"></div>
     </div>
   </section>
@@ -284,7 +285,7 @@
       <h2>Kracht vs. hoek</h2>
       <canvas id="xyCanvas" data-h="630"></canvas>
     </div>
-    <div class="chart-wrap adv-only" id="histWrap" style="display:none">
+    <div class="chart-wrap adv-only" id="histWrap">
       <h2>Geschiedenis — laatste metingen op device</h2>
       <div class="btns" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
         <button id="btnHistImport" disabled>Importeer geschiedenis</button>
@@ -294,6 +295,13 @@
       <div class="hint" id="histGhStatus"></div>
       <div class="hint" id="histDlFallback"></div>
       <div id="histList" class="hint">nog niet geïmporteerd — verbind en klik op "Importeer geschiedenis".</div>
+      <div class="field wide" style="margin-top:14px">
+        <select id="histLoadSelect" disabled style="flex:1;background:var(--inputbg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 8px;font-family:var(--mono);font-size:12px">
+          <option value="">— importeer eerst de geschiedenis —</option>
+        </select>
+      </div>
+      <button id="btnHistLoad" class="wide" disabled>Meting laden in analysescherm</button>
+      <div class="hint" id="histLoadStatus"></div>
     </div>
   </section>
 </main>
@@ -301,7 +309,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-20 14:08</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-21 10:00</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -528,7 +536,7 @@ function isStandard(){ return document.body.classList.contains("standard"); }
 async function uploadToGitHub(blob,filename,statusElId,btnId){
   const statusEl=$(statusElId), btn=btnId?$(btnId):null;
   const secret=$("ghSecret").value.trim();
-  if(!secret){ statusEl.textContent="Vul eerst een upload-code in."; return; }
+  if(!secret){ statusEl.textContent="Vul eerst een upload-code in."; return false; }
   if(btn) btn.disabled=true;
   statusEl.textContent="bezig met uploaden…";
   try{
@@ -536,9 +544,9 @@ async function uploadToGitHub(blob,filename,statusElId,btnId){
       headers:{"X-Upload-Secret":secret,"X-Filename":filename,"Content-Type":blob.type||"application/octet-stream"},
       body:blob});
     const data=await res.json().catch(()=>({}));
-    if(res.ok && data.ok) statusEl.innerHTML='gelukt — <a href="'+data.url+'" target="_blank" rel="noopener">bekijk op GitHub</a>';
-    else statusEl.textContent="mislukt: "+(data.error||res.status);
-  }catch(e){ statusEl.textContent="mislukt: "+e.message; }
+    if(res.ok && data.ok){ statusEl.innerHTML='gelukt — <a href="'+data.url+'" target="_blank" rel="noopener">bekijk op GitHub</a>'; return true; }
+    statusEl.textContent="mislukt: "+(data.error||res.status); return false;
+  }catch(e){ statusEl.textContent="mislukt: "+e.message; return false; }
   finally{ if(btn) btn.disabled=false; }
 }
 
@@ -642,9 +650,11 @@ function importHistory(lines){
   if(!measHistory.length) alert("Geen (herkenbare) metingen gevonden in de device-geschiedenis.");
 }
 function renderHistory(){
-  const el=$("histList");
+  const el=$("histList"), loadSel=$("histLoadSelect");
   if(!measHistory.length){ el.textContent="nog niet geïmporteerd — verbind en klik op \"Importeer geschiedenis\".";
-    $("btnHistXlsx").disabled=true; $("btnHistXlsxGh").disabled=true; return; }
+    $("btnHistXlsx").disabled=true; $("btnHistXlsxGh").disabled=true;
+    loadSel.innerHTML='<option value="">— importeer eerst de geschiedenis —</option>'; loadSel.disabled=true;
+    $("btnHistLoad").disabled=true; return; }
   let html='<div style="max-height:280px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px">'+
     '<tr style="color:var(--dim);text-align:left"><th style="padding:3px 6px">#</th><th style="padding:3px 6px">samples</th>'+
     '<th style="padding:3px 6px">duur</th><th style="padding:3px 6px">commentaar</th></tr>';
@@ -661,7 +671,31 @@ function renderHistory(){
   el.innerHTML=html;
   el.querySelectorAll(".histComment").forEach(inp=>{ inp.oninput=()=>{ measHistory[+inp.dataset.hi].comment=inp.value; }; });
   $("btnHistXlsx").disabled=false; $("btnHistXlsxGh").disabled=false;
+  // Nieuwste meting bovenaan in de dropdown (measHistory zelf staat oplopend,
+  // oudste eerst, want zo komen de metingen ook uit het device-log).
+  loadSel.innerHTML='<option value="">— kies een meting ('+measHistory.length+') —</option>'+
+    measHistory.slice().reverse().map((h,ri)=>{ const i=measHistory.length-1-ri;
+      return '<option value="'+i+'">#'+h.num+' — '+h.n+' samples, '+h.durS.toFixed(1)+'s'+(h.comment?" — "+h.comment.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"):"")+'</option>'; }).join("");
+  loadSel.disabled=false; $("btnHistLoad").disabled=!loadSel.value;
 }
+$("histLoadSelect").onchange=()=>{ $("btnHistLoad").disabled=$("histLoadSelect").value===""; };
+// Laadt één individuele meting uit de geïmporteerde device-geschiedenis in het
+// analysescherm -- zelfde soort samples-vervanging als "Oude meting laden
+// (GitHub)" (btnOldMeasLoad), maar zonder meta (naam/notities/geometrie: de
+// device-geschiedenis bevat alleen t/deg/N, geen "Handvat-posities"-metadata),
+// dus die velden blijven staan zoals ze al ingevuld zijn/worden.
+$("btnHistLoad").onclick=()=>{
+  const idx=$("histLoadSelect").value; if(idx==="") return;
+  const h=measHistory[+idx]; if(!h||!h.rows.length) return;
+  const status=$("histLoadStatus");
+  if(running){ send("STOP"); running=false; updateRun(); keepAwakeStop(); }
+  samples=h.rows.map(r=>({t:r.t, deg:r.deg, N:(r.N===""||isNaN(r.N))?"":r.N}));
+  loadedMeasMeta=null;
+  $("nSamples").textContent=samples.length; $("lastT").textContent=(samples[samples.length-1].t/1000).toFixed(2);
+  $("btnCsv").disabled=false; $("btnXlsx").disabled=false; $("btnXlsxGh").disabled=false;
+  computeGeo();
+  status.textContent="geladen: meting #"+h.num+" ("+samples.length+" samples)"+(haveHL()?" — klaar voor Rapportage + Analyse.":" — vul evt. Handvat-posities in voor de bedienkracht-analyse.");
+};
 function buildHistoryXlsx(){
   const overview=[["FAR-500 geschiedenis"],["Geïmporteerd",new Date().toLocaleString('nl-NL')],[],
     ["Meting nr","Samples","Duur (s)","Commentaar"]];
@@ -1550,22 +1584,34 @@ function tsStamp(){ const d=new Date(), p=n=>String(n).padStart(2,"0");
   return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
 function fname(ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
   return tsStamp()+"_"+nm+"."+ext; }
-function download(name,blob,fallbackId){
+function download(name,blob,fallbackId,append){
   const u=URL.createObjectURL(blob);
   const a=Object.assign(document.createElement("a"),{href:u,download:name});
   document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(u);
-  showDownloadFallback(name,blob,fallbackId||"dlFallback");
+  // Niet meteen revoken -- op sommige (mobiele) browsers is er een kleine
+  // vertraging tussen a.click() en het daadwerkelijk starten van de download;
+  // een te vroege revokeObjectURL() kan die download dan laten mislukken.
+  setTimeout(()=>URL.revokeObjectURL(u),3000);
+  showDownloadFallback(name,blob,fallbackId||"dlFallback",append);
 }
 // Bluefy en vergelijkbare minimale iOS-webviews tonen vaak geen download-dialoog
 // bij een synthetic <a download>-click (er gebeurt dan zichtbaar niets). Toon
 // daarom ook altijd een zichtbare data:-link, die je op iOS met een lange tik
 // kunt opslaan via "Bewaar bestand" / delen -- werkt ongeacht webview-support.
-function showDownloadFallback(name,blob,elId){
+// append=true voegt toe aan de bestaande link(en) i.p.v. ze te overschrijven
+// -- nodig zodra 1 knop (bv. "Maak rapportage + Analyse") 2 bestanden na
+// elkaar downloadt: zonder append verdween de link van het 1e bestand (XLSX)
+// zodra het 2e (PDF) zijn fallback-link zette op hetzelfde element.
+const _dlFallbackItems={};
+function showDownloadFallback(name,blob,elId,append){
   const el=$(elId); if(!el) return;
+  if(!append) _dlFallbackItems[elId]=[];
   const reader=new FileReader();
-  reader.onload=()=>{ el.innerHTML='Bestand niet vanzelf gedownload (bv. in Bluefy)? Tik lang op deze link en kies "Bewaar bestand"/"Delen": '+
-    '<a href="'+reader.result+'" download="'+name+'" style="color:var(--cyan)">'+name+'</a>'; };
+  reader.onload=()=>{
+    (_dlFallbackItems[elId]=_dlFallbackItems[elId]||[]).push({name,url:reader.result});
+    el.innerHTML='Bestand niet vanzelf gedownload (bv. in Bluefy)? Tik lang op de link en kies "Bewaar bestand"/"Delen": '+
+      _dlFallbackItems[elId].map(it=>'<a href="'+it.url+'" download="'+it.name+'" style="color:var(--cyan)">'+it.name+'</a>').join(' &nbsp;|&nbsp; ');
+  };
   reader.readAsDataURL(blob);
 }
 
@@ -1616,23 +1662,43 @@ $("btnReportXlsx").onclick=async()=>{
 // "Maak rapportage + Analyse" (op verzoek de hoofdknop -- bouwt de canvas
 // maar 1x en slaat daarvan zowel de XLSX als de PDF op, i.p.v. dat de
 // gebruiker apart nog op "Rapportage + Analyse XLSX" moet klikken).
+// Bewaart het laatst gegenereerde PDF-rapport zodat een mislukte GitHub-
+// upload (bv. geen netwerk in het veld) later handmatig opnieuw geprobeerd
+// kan worden via btnGhRetry, zonder het rapport opnieuw te hoeven genereren.
+let lastReportUpload=null;
 $("btnReportPdf").onclick=async()=>{
   if(!reportPrereqsOk()) return;
   const btn=$("btnReportPdf"); btn.disabled=true;
+  $("btnGhRetry").style.display="none"; lastReportUpload=null;
   try{
     const {canvas, series, res, jpegBytes}=await buildAnalyseReportAssets();
     const dataRows=buildReportDataRows(series,res);
     const xlsxBlob_=buildReportXlsxBlob(jpegBytes, canvas.width, canvas.height, dataRows);
     download(fnameSuffix("rapport","xlsx"), xlsxBlob_);
+    // Kleine pauze tussen de 2 downloads: sommige browsers blokkeren het 2e
+    // automatische bestand als 2 downloads te snel na elkaar vanuit script
+    // getriggerd worden ("meerdere bestanden tegelijk downloaden"-blokkade) --
+    // vermoedelijke oorzaak van een gemelde meting waarbij alleen de PDF
+    // aankwam en de XLSX niet.
+    await new Promise(r=>setTimeout(r,400));
     const pdfBlob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
     const name=fnameSuffix("analyse","pdf");
-    download(name, pdfBlob);
+    download(name, pdfBlob, "dlFallback", true);   // append: laat ook de XLSX-fallback-link staan
     // Op verzoek: in zowel Standard als Advanced wordt het PDF-rapport ook
     // altijd naar GitHub geüpload (zelfde relay/upload-code als de andere
-    // "Naar GitHub"-knoppen) -- niet alleen lokaal gedownload.
-    await uploadToGitHub(pdfBlob, name, "ghStatus", "btnReportPdf");
+    // "Naar GitHub"-knoppen) -- niet alleen lokaal gedownload. Lukt de upload
+    // niet (bv. geen netwerk op de meetlocatie), dan blijven de lokale
+    // bestanden gewoon staan en verschijnt "Opnieuw uploaden naar GitHub" om
+    // het later, met verbinding, alsnog te proberen.
+    const ok=await uploadToGitHub(pdfBlob, name, "ghStatus", "btnReportPdf");
+    if(!ok){ lastReportUpload={blob:pdfBlob,name}; $("btnGhRetry").style.display=""; }
   }catch(e){ alert(e.message); }
   finally{ updateReportButtons(); }
+};
+$("btnGhRetry").onclick=async()=>{
+  if(!lastReportUpload) return;
+  const ok=await uploadToGitHub(lastReportUpload.blob, lastReportUpload.name, "ghStatus", "btnGhRetry");
+  if(ok) $("btnGhRetry").style.display="none";
 };
 function xlsxBlob(rows,sheetName){ return xlsxWorkbook([{name:sheetName,rows}]); }
 // Gedeeld door xlsxWorkbook() en buildReportXlsxBlob() (rapportage-export).
