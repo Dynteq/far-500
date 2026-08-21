@@ -266,7 +266,7 @@
         </div>
         <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
         <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
-        <button id="btnReportPdf" class="wide" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat ook de XLSX op en upload naar GitHub">Maak rapportage + Analyse</button>
+        <button id="btnReportPdf" class="wide primary" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat ook de XLSX op en upload naar GitHub">Opslaan</button>
         <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
       </div>
       <div class="hint" id="ghStatus"></div>
@@ -320,7 +320,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-21 13:30</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-21 15:20</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -1342,27 +1342,36 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
   // plus een "handvathoogte"-onderschrift in hetzelfde lettertype -- het
   // onderschrift staat links van de 135cm-streep (op verzoek: stond eerst
   // aan de rechterrand en overlapte daar met het 170cm-label) ----
-  let px135=null;
+  // Root cause van het blijvende overlap-probleem (eerdere fixes losten dit
+  // niet echt op): textAlign stond op dit punt nog op "center" (geërfd van
+  // de hoek-as-loop hierboven) -- "135 cm" wordt dus GECENTREERD op px135
+  // getekend, niet links uitgelijnd ervanaf. De linkerrand van die tekst
+  // ligt daardoor op px135-breedte/2, flink verder naar links dan de kleine
+  // vaste "gap" die hier eerder vanuit ging (vandaar dat "handvathoogte"
+  // ondanks alle eerdere pogingen toch nog overlapte). Nu expliciet
+  // gemeten en daarop gebaseerd i.p.v. aangenomen.
+  let px135=null, px135LabelW=null;
   [[CRIT.H_THRESH,CRIT.H_THRESH.toFixed(0)+" cm"],[CRIT.H_MAX,CRIT.H_MAX.toFixed(0)+" cm"]].forEach(([htgt,label])=>{
     const deg=degForHeight(htgt);
     if(deg==null||deg<ANGLE_MIN||deg>ANGLE_MAX) return;
     const px=X(deg);
-    if(htgt===CRIT.H_THRESH) px135=px;
     ctx.strokeStyle="#444"; ctx.lineWidth=2.6;
     ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px,py+ph); ctx.stroke();
-    ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif";
+    ctx.fillStyle="#222"; ctx.font="bold "+(AF+1)+"px sans-serif"; ctx.textAlign="center";
     ctx.fillText(label, px, py-Math.round(AF*1.1));
+    if(htgt===CRIT.H_THRESH){ px135=px; px135LabelW=ctx.measureText(label).width; }
     ctx.font=AF+"px sans-serif";
   });
   if(px135!=null){
-    // Altijd links van de 135cm-tekst, gekoppeld aan de werkelijk gemeten
-    // breedte van dat label -- GEEN klem tegen de linkerrand van de grafiek
-    // meer (die klem kon de tekst juist weer over "135 cm" heen duwen als
-    // de streep dicht bij de linkerrand viel, exact het overlap-probleem
-    // dat dit moest voorkomen).
+    // Links van de daadwerkelijke linkerrand van de (gecentreerde) "135 cm"-
+    // tekst, gekoppeld aan de werkelijk gemeten breedte van beide labels --
+    // GEEN klem tegen de linkerrand van de grafiek (die klem duwde de tekst
+    // juist weer over "135 cm" heen als de streep dicht bij de linkerrand
+    // viel).
     ctx.font="bold "+(AF+1)+"px sans-serif";
     const hLabel="handvathoogte", gap=Math.round(AF*0.6);
-    const hx=px135-gap-ctx.measureText(hLabel).width;
+    const leftEdge135=px135-px135LabelW/2;
+    const hx=leftEdge135-gap-ctx.measureText(hLabel).width;
     ctx.textAlign="left"; ctx.fillStyle="#222";
     ctx.fillText(hLabel, hx, py-Math.round(AF*1.1));
   }
@@ -1389,16 +1398,15 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
         const px=X(deg);
         if(d===10) midPx=px;
         ctx.strokeStyle="#1e9e6a"; ctx.lineWidth=1.6;
-        ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif";
+        ctx.fillStyle="#1e9e6a"; ctx.font=AFtick+"px sans-serif"; ctx.textAlign="center";
         if(atTop){
           ctx.beginPath(); ctx.moveTo(px,py-4); ctx.lineTo(px,py+10); ctx.stroke();
-          // Op verzoek: bovenaan alleen bij 20cm nog een label (0/10 alleen
-          // de streep) -- minder drukte.
-          if(d===20) ctx.fillText(d.toFixed(0)+"cm", px, py-Math.round(AF*0.25));
+          // Op verzoek: alle 3 tickmarks (0/10/20) weer een label, zonder
+          // "cm"-eenheid erachter (was eerst alleen 20cm, met "cm").
+          ctx.fillText(d.toFixed(0), px, py-Math.round(AF*0.25));
         } else {
           ctx.beginPath(); ctx.moveTo(px,py+ph-10); ctx.lineTo(px,py+ph+4); ctx.stroke();
-          // Onderaan juist alleen bij 0cm nog een label (10/20 alleen de streep).
-          if(d===0) ctx.fillText(d.toFixed(0)+"cm", px, py+ph+Math.round(AF*2.8));
+          ctx.fillText(d.toFixed(0), px, py+ph+Math.round(AF*2.8));
         }
       });
       return midPx;
@@ -1434,7 +1442,8 @@ function drawAngleForceChart(ctx,x,y,w,h,series,res,axisFontPx){
     if(isNaN(deg)||N===""||isNaN(N)) continue;
     const bad=violSet.has(i);
     ctx.fillStyle=bad?"#CC0000":"#00b4ce";
-    ctx.beginPath(); ctx.arc(X(deg),Y(N), bad?3.4:2.2, 0, 7); ctx.fill(); }
+    // Op verzoek 2x zo groot voor de rode (afkeur-)punten, zodat ze duidelijker opvallen.
+    ctx.beginPath(); ctx.arc(X(deg),Y(N), bad?6.8:2.2, 0, 7); ctx.fill(); }
 
   // ---- "omhoog"/"omlaag"-labels, verbonden aan de meetlijn: "omhoog →" bij
   // -15° (binnen de omhooggaande beweging, boven de lijn), "← omlaag" bij

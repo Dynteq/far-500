@@ -47,6 +47,57 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-21** (vervolg: knop "Opslaan" + grafiek-opmaakfixes (tickmarks
+  terug zonder "cm", écht root-cause-fix voor "handvathoogte"-overlap, 2x
+  grotere rode afkeur-punten), op verzoek, alles in `FAR-500.html`,
+  `drawAngleForceChart()` behalve de knop):
+  - **Knop "Maak rapportage + Analyse" → "Opslaan"**, en dezelfde blauwe
+    (`primary`/cyaan) kleur als "Start meting" (was grijs/neutraal).
+  - **0/10/20-tickmarks weer met tekstlabel, boven én onder** (was: sinds
+    2026-08-20 alleen "20cm" boven en "0cm" onder, de rest kaal) — nu weer
+    alle 3 tickmarks aan beide kanten, maar zonder "cm"-eenheid (bv. "10"
+    i.p.v. "10cm").
+  - **"handvathoogte"-label overlapte nog steeds met "135 cm"**, ondanks 3
+    eerdere fixpogingen (2026-08-19, 2x 2026-08-20) — **root cause nu pas
+    gevonden**: `ctx.textAlign` stond op dat punt in de tekencode nog op
+    `"center"` (geërfd van de hoek-as-loop erboven, nooit expliciet gezet
+    voor de 135/170cm-labels), dus "135 cm" werd GECENTREERD op zijn
+    tick-positie getekend i.p.v. links uitgelijnd ervanaf. Alle eerdere
+    fixes gingen ervan uit dat "135 cm" bij `px135` bégint, terwijl de
+    tekst daar juist het MIDDEN had — de linkerrand van "135 cm" lag dus
+    steeds verder naar links dan aangenomen, precies genoeg om de kleine
+    vaste marge (`AF*0.6`) op te eten. Fix: `textAlign` nu expliciet op
+    `"center"` gezet vóór het tekenen van "135 cm"/"170 cm" (i.p.v. impliciet
+    geërfd), de breedte van "135 cm" wordt gemeten en de linkerrand
+    (`px135 - breedte/2`) is nu het uitgangspunt voor waar "handvathoogte"
+    moet eindigen — wiskundig gegarandeerd geen overlap meer, voor elke
+    positie van de 135cm-streep (ook als "handvathoogte" daardoor over de
+    linkerrand van de grafiek/het canvas heen loopt, zoals al eerder
+    afgesproken: geen overlap is de leidende eis).
+  - **Rode (afkeur-)meetpunten 2x zo groot** (straal 3.4→6.8px) om beter op
+    te vallen; groene/cyaan normale punten ongewijzigd (2.2px).
+  - **Meta-vraag van de gebruiker beantwoord** (of ik feedback die tijdens
+    het verwerken van een prompt gegeven wordt kan meenemen): nee, dat kan
+    niet — ik verwerk één bericht per beurt en zie een tussentijds bericht
+    pas ná het afronden van de lopende beurt, als een nieuw bericht. Dat is
+    een technische beperking, geen kwestie van "niet goed omgaan met
+    input" op zich. Voor déze specifieke "handvathoogte"-klacht was het
+    echter geen kwestie van gemist commentaar: dezelfde bug is 3x eerder
+    (ogenschijnlijk) "gefixt" zonder de werkelijke root cause (de geërfde
+    `textAlign="center"`) te vinden — dat is nu wél gebeurd, zie boven.
+  - **Getest**: `node --check`, en een uitgebreide jsdom-run (15 checks) via
+    de volledige `buildAnalyseReportCanvas()`-pijplijn met een synthetische
+    snelle-breakaway-meting (zowel omhoog als omlaag): bevestigt de nieuwe
+    knoptekst/-kleur, dat "0"/"10"/"20" (zonder "cm") bij zowel de
+    omhoog- als omlaag-tickmarks getekend worden, dat de rode punten nu
+    straal 6.8 gebruiken (normale punten nog 2.2), en — met de exacte
+    px-rekensom van de daadwerkelijke `ctx.fillText`-aanroepen — dat
+    "handvathoogte" nooit meer over de (gecentreerd gemeten) linkerrand van
+    "135 cm" heen valt, getest in zowel een normale geometrie als de
+    historisch falende situatie (135cm-streep vlak bij de linkerrand van de
+    grafiek). **Niet visueel gecontroleerd** in een echte browser/PDF-viewer
+    — graag bij de volgende PDF-export bevestigen dat het er nu ook
+    visueel goed uitziet.
 - **2026-08-21** (vervolg: %-voortgangsbalk bij DUMP-transfers + opnamenummer
   in PDF-rapport en bestandsnamen, op verzoek, in `FAR-500.html` +
   `FAR-500_ESP32C6.ino`):
