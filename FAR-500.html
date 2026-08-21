@@ -73,6 +73,11 @@
   .legend i{width:10px;height:3px;border-radius:2px;display:inline-block}
   canvas{width:100%;display:block;max-height:800px}
   .hint{font-size:12px;color:var(--dim);line-height:1.5}
+  .progress-wrap{margin-top:8px}
+  .progress-track{position:relative;background:var(--inputbg);border:1px solid var(--line);border-radius:6px;height:22px;overflow:hidden}
+  .progress-fill{background:var(--cyan);height:100%;width:0%;transition:width .15s linear}
+  .progress-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+                  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink)}
   .toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin-bottom:4px;cursor:pointer;user-select:none}
   .toggle input{cursor:pointer}
   .collapsible{max-height:0;overflow:hidden;opacity:0;transition:max-height .25s ease,opacity .2s ease}
@@ -195,6 +200,9 @@
       <button id="btnCsv" class="adv-only" disabled>Download CSV</button>
       <button id="btnDump" class="adv-only" disabled>Device-log</button>
     </div>
+    <div class="progress-wrap adv-only" id="dumpProgressWrap" style="display:none">
+      <div class="progress-track"><div class="progress-fill" id="dumpProgressFill"></div><div class="progress-label" id="dumpProgressLabel">0%</div></div>
+    </div>
 
     <div class="card adv-only">
       <h3>Oude meting laden (GitHub)</h3>
@@ -292,6 +300,9 @@
         <button id="btnHistXlsx" class="primary" disabled>Download Excel</button>
         <button id="btnHistXlsxGh" disabled>Upload naar GitHub</button>
       </div>
+      <div class="progress-wrap" id="histImportProgressWrap" style="display:none">
+        <div class="progress-track"><div class="progress-fill" id="histImportProgressFill"></div><div class="progress-label" id="histImportProgressLabel">0%</div></div>
+      </div>
       <div class="hint" id="histGhStatus"></div>
       <div class="hint" id="histDlFallback"></div>
       <div id="histList" class="hint">nog niet geïmporteerd — verbind en klik op "Importeer geschiedenis".</div>
@@ -309,7 +320,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-21 10:00</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-21 13:30</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -322,8 +333,16 @@ const D2R=Math.PI/180, WIN=0.3, H135=135;
 const GH_RELAY_URL="https://far500-upload-worker.far500-upload-worker.workers.dev";
 
 let ctrlChar=null, running=false, samples=[], dumpLines=[], dumping=false, dumpMode="raw";
-let liveAngle=NaN, measStart=null;
+let liveAngle=NaN, measStart=null, bleOn=false;
 let measHistory=[];   // geïmporteerde meting-geschiedenis: [{num,n,durS,rows:[{t,deg,N}],comment}]
+// Opnamenummer (device-teller, "#MEAS,<nr>") van de huidige/geladen meting --
+// getoond in het PDF-rapport en gebruikt in bestandsnamen. liveTracking=true
+// zolang dit gewoon het (evt. nog lopende) live device-nummer moet volgen;
+// wordt false zodra een oude/losse meting handmatig geladen is (history-
+// dropdown of GitHub), zodat live telemetrie dat expliciet gekozen nummer
+// niet meer overschrijft totdat de volgende "Start meting" het weer aanzet.
+let curMeasNum=null, liveTracking=true;
+let dumpTotalBytes=0, dumpRecvBytes=0;   // voor de %-voortgangsbalk bij DUMP-transfers
 let diag={x:NaN,y:NaN,z:NaN,xmin:1e9,xmax:-1e9,ymin:1e9,ymax:-1e9,zmin:1e9,zmax:-1e9};
 const dec=new TextDecoder(), $=id=>document.getElementById(id);
 const dot=$("dot"), connTxt=$("connTxt");
@@ -405,6 +424,7 @@ $("btnConnect").onclick=async()=>{
   }catch(e){ if(e.name!=="NotFoundError") alert("Verbinden mislukt: "+e.message); }
 };
 function setConnected(on,name){
+  bleOn=on;
   dot.classList.toggle("on",on); connTxt.textContent=on?name:"niet verbonden";
   ["btnTare","btnStart","btnClear","btnDump","btnHistImport"].forEach(id=>$(id).disabled=!on);
   $("btnStop").disabled=true; $("btnConnect").textContent=on?"Verbonden":"Verbinden"; $("btnConnect").disabled=on;
@@ -457,15 +477,42 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible" && running) keepAwakeStart();
 });
 $("btnClear").onclick=()=>{ if(confirm("Device-log wissen?")) send("CLEAR"); };
-$("btnDump").onclick =()=>{ dumpMode="raw"; dumpLines=[]; dumping=true; send("DUMP"); armDumpTimeout(); };
-$("btnHistImport").onclick=()=>{ dumpMode="history"; dumpLines=[]; dumping=true; send("DUMP"); armDumpTimeout(); };
+// DUMP-voortgang (Device-log / Importeer geschiedenis): beide knoppen delen
+// dezelfde onderliggende BLE-overdracht (er kan er maar 1 gelijktijdig
+// lopen), dus tijdens een transfer gaan ze allebei op grijs -- de %-balk
+// verschijnt alleen bij de knop die de transfer startte. Het percentage is
+// pas echt (i.p.v. alleen een "bezig..."-indicator) zodra de firmware de
+// bestandsgrootte als eerste regel stuurt (`#SIZE,<bytes>`, zie
+// logDumpBle() -- vereist een reflash, zie CLAUDE.md).
+function dumpUi(mode){ return mode==="history"
+  ? {wrap:$("histImportProgressWrap"), fill:$("histImportProgressFill"), label:$("histImportProgressLabel")}
+  : {wrap:$("dumpProgressWrap"), fill:$("dumpProgressFill"), label:$("dumpProgressLabel")}; }
+function setDumpProgress(pct){
+  const ui=dumpUi(dumpMode), p=Math.max(0,Math.min(100,pct));
+  ui.fill.style.width=p+"%"; ui.label.textContent=Math.round(p)+"%";
+}
+function startDumpUi(mode){
+  $("btnDump").disabled=true; $("btnHistImport").disabled=true;
+  const ui=dumpUi(mode);
+  ui.fill.style.width="0%"; ui.label.textContent="bezig…"; ui.wrap.style.display="block";
+}
+function endDumpUi(){
+  $("btnDump").disabled=!bleOn; $("btnHistImport").disabled=!bleOn;
+  $("dumpProgressWrap").style.display="none"; $("histImportProgressWrap").style.display="none";
+}
+function startDump(mode){
+  dumpMode=mode; dumpLines=[]; dumping=true; dumpTotalBytes=0; dumpRecvBytes=0;
+  startDumpUi(mode); send("DUMP"); armDumpTimeout();
+}
+$("btnDump").onclick =()=>startDump("raw");
+$("btnHistImport").onclick=()=>startDump("history");
 let dumpTimer=null;
 // zonder ack/flow-control op de DUMP-stream (zie firmware logDumpBle()) kan een
 // weggevallen notify de import voor altijd laten hangen zonder foutmelding --
 // deze timeout breekt af zodra er 5s niets meer binnenkomt.
 function armDumpTimeout(){
   clearTimeout(dumpTimer);
-  dumpTimer=setTimeout(()=>{ if(dumping){ dumping=false;
+  dumpTimer=setTimeout(()=>{ if(dumping){ dumping=false; endDumpUi();
     alert("Download afgebroken: er kwam 5s geen data meer binnen van het device (verbinding of BLE-overdracht haperde). Probeer opnieuw."); } },5000);
 }
 $("btnResetRange").onclick=()=>{ diag.xmin=diag.ymin=diag.zmin=1e9; diag.xmax=diag.ymax=diag.zmax=-1e9; updateDiag(); };
@@ -590,6 +637,10 @@ function onData(e){
   const t=+p[0],deg=parseFloat(p[1]),N=parseFloat(p[2]),bat=p[3]!==undefined?+p[3]:null;
   if(isNaN(t)) return;   // afgekapte/kapotte notify (bv. BLE-MTU-glitch) -- negeer i.p.v. de grafiek te breken
   const devLogging=p.length>=8?(+p[7]===1):null;   // 8e veld: logt device nu (0/1)? ontbreekt bij oudere firmware
+  // 9e veld: opnamenummer (measNum) van de huidige/laatste meting op het
+  // device -- ontbreekt bij oudere firmware (vóór deze uitbreiding).
+  if(p.length>=9){ const devMeasNum=parseInt(p[8],10);
+    if(!isNaN(devMeasNum) && liveTracking) curMeasNum=devMeasNum; }
   liveAngle=deg;
   $("angleVal").textContent=isNaN(deg)?"—":deg.toFixed(1);
   $("forceVal").textContent=isNaN(N)?"—":N.toFixed(0);
@@ -621,11 +672,20 @@ function updateDiag(){
   rng(diag.xmin,diag.xmax,"rngX"); rng(diag.ymin,diag.ymax,"rngY"); rng(diag.zmin,diag.zmax,"rngZ");
 }
 function onLog(e){ if(!dumping) return; const line=dec.decode(e.target.value);
-  if(line.trim()==="<<EOF>>"){ dumping=false; clearTimeout(dumpTimer);
+  if(line.trim()==="<<EOF>>"){ dumping=false; clearTimeout(dumpTimer); endDumpUi();
     if(dumpMode==="history"){ importHistory(dumpLines); }
     else if(dumpLines.length) download("device_log.csv",new Blob([dumpLines.join("\r\n")],{type:"text/csv"}));
     else alert("Device-log is leeg.");
     return; }
+  // De allereerste regel van een dump is de bestandsgrootte ("#SIZE,<bytes>",
+  // zie firmware logDumpBle()) -- geen databestandsregel, dus niet meenemen
+  // in dumpLines, alleen gebruiken voor de %-voortgangsbalk. Oudere firmware
+  // (vóór deze functie) stuurt dit nog niet: dan blijft dumpTotalBytes 0 en
+  // toont de balk alleen "bezig..." i.p.v. een percentage.
+  const sizeMatch=(dumpRecvBytes===0 && !dumpLines.length) ? line.match(/^#SIZE,(\d+)/) : null;
+  if(sizeMatch){ dumpTotalBytes=parseInt(sizeMatch[1],10)||0; armDumpTimeout(); return; }
+  dumpRecvBytes+=line.length+1;   // +1 voor de \n die readStringUntil('\n') al wegstript
+  if(dumpTotalBytes>0) setDumpProgress(100*dumpRecvBytes/dumpTotalBytes);
   dumpLines.push(line); armDumpTimeout(); }
 
 /* ---------------- geschiedenis ---------------- */
@@ -691,6 +751,7 @@ $("btnHistLoad").onclick=()=>{
   if(running){ send("STOP"); running=false; updateRun(); keepAwakeStop(); }
   samples=h.rows.map(r=>({t:r.t, deg:r.deg, N:(r.N===""||isNaN(r.N))?"":r.N}));
   loadedMeasMeta=null;
+  curMeasNum=h.num; liveTracking=false;
   $("nSamples").textContent=samples.length; $("lastT").textContent=(samples[samples.length-1].t/1000).toFixed(2);
   $("btnCsv").disabled=false; $("btnXlsx").disabled=false; $("btnXlsxGh").disabled=false;
   computeGeo();
@@ -864,6 +925,11 @@ $("btnOldMeasLoad").onclick=async()=>{
     // handmatig een letter wijzigde.
     updateMetingBlink();
     loadedMeasMeta={datumStr: metaStr(meta,"Datum/tijd meting",1)};
+    // "Meting nr" staat alleen in bestanden die na deze uitbreiding zijn
+    // geëxporteerd -- ontbreekt die metadata (oudere GitHub-export), dan is
+    // het opnamenummer simpelweg onbekend (curMeasNum=null, geen kader in
+    // het PDF-rapport / geen extra segment in de bestandsnaam).
+    curMeasNum=metaNum(meta,"Meting nr",1); liveTracking=false;
 
     geo.yHigh=metaNum(meta,"Handvat hoog (cm)",1); geo.angHigh=metaNum(meta,"Handvat hoog (cm)",3);
     geo.yLow=metaNum(meta,"Handvat laag (cm)",1); geo.angLow=metaNum(meta,"Handvat laag (cm)",3);
@@ -890,7 +956,11 @@ $("btnOldMeasLoad").onclick=async()=>{
 };
 
 /* ---------------- analyse ---------------- */
-function resetAnalysis(){ A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false}; setBanner(); updateReportButtons(); }
+function resetAnalysis(){ A={arc:[],spd:[],acc:[],ht:[],ts:[],markUp:null,markDown:null,m135up:null,m135down:null,maxV:0,maxA:0,failA:false,failB:false};
+  // Nieuwe live meting -> weer het (nog te ontvangen) live opnamenummer
+  // volgen i.p.v. een eventueel eerder geladen historische/oude meting.
+  curMeasNum=null; liveTracking=true;
+  setBanner(); updateReportButtons(); }
 function derivAt(i,arr,ts){ let j=i-1; while(j>0&&ts[i]-ts[j]<WIN)j--; if(j<0||ts[i]===ts[j])return 0; return (arr[i]-arr[j])/(ts[i]-ts[j]); }
 // Trailing 4-punts voortschrijdend gemiddelde -- differentiëren van een hoek
 // met sensorruis versterkt die ruis, waardoor snelheid/versnelling grillig
@@ -1469,6 +1539,18 @@ function buildAnalyseReportCanvas(){
   ctx.fillText("bedienkracht-analyse", W-PAD, y+76);
   ctx.textAlign="left";
 
+  // Opnamenummer (device-teller, "#MEAS,<nr>") rechtsboven in een kader,
+  // direct onder de FAR-500/bedienkracht-analyse-kop, op verzoek. Onbekend
+  // (bv. een oude GitHub-export van vóór dit veld, of nooit een live
+  // BLE-verbinding gehad) -> geen kader getekend.
+  if(curMeasNum!=null){
+    const boxW=140, boxH=56, boxX=W-PAD-boxW, boxY=y+96;
+    ctx.strokeStyle="#111"; ctx.lineWidth=2.5; ctx.strokeRect(boxX,boxY,boxW,boxH);
+    ctx.textAlign="center"; ctx.font="bold 36px sans-serif"; ctx.fillStyle="#111";
+    ctx.fillText("#"+curMeasNum, boxX+boxW/2, boxY+boxH/2+13);
+    ctx.textAlign="left";
+  }
+
   ctx.font="bold 42px sans-serif"; ctx.fillStyle="#111";
   ctx.fillText($("naam").value||"(naam onbekend)", PAD, y+42);
   const notitie=$("notities").value;
@@ -1544,9 +1626,13 @@ function buildReportDataRows(series,res){
 // Op verzoek: de rapport-bestandsnaam neemt ook de notitie (Positie/Belasting)
 // mee -- een lange maar praktische naam, zodat een los .xlsx/.pdf-bestand
 // (bv. in de GitHub-release-lijst) zonder het te openen al herkenbaar is.
+// Opnamenummer (indien bekend, zie curMeasNum hierboven) direct na de
+// tijdstempel, vóór merk/type -- op verzoek, geldt voor alle exports
+// (Meetgegevens XLSX/CSV via fname(), rapport-XLSX/PDF via fnameSuffix()).
+function recPart(){ return curMeasNum!=null?("_"+curMeasNum):""; }
 function fnameSuffix(suffix,ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
   const note=$("notities").value.trim().replace(/[^\w\-]+/g,"_").slice(0,60);
-  return tsStamp()+"_"+nm+(note?"_"+note:"")+"_"+suffix+"."+ext; }
+  return tsStamp()+recPart()+"_"+nm+(note?"_"+note:"")+"_"+suffix+"."+ext; }
 
 /* ---------------- export ---------------- */
 const r2=x=>(x==null||isNaN(x))?"":Math.round(x*100)/100;
@@ -1555,6 +1641,7 @@ function metaRows(){
   const dt=(measStart||new Date());
   return [
     ["FAR-500 meting"],
+    ["Meting nr", curMeasNum!=null?curMeasNum:""],
     ["Naam (Merk/Type)", $("naam").value],
     ["Notities (Positie/Belasting)", $("notities").value],
     ["Datum/tijd meting", dt.toLocaleString('nl-NL')],
@@ -1583,7 +1670,7 @@ function dataRow(i){ const hl=haveL();
 function tsStamp(){ const d=new Date(), p=n=>String(n).padStart(2,"0");
   return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
 function fname(ext){ const nm=($("naam").value||"far500").replace(/[^\w\-]+/g,"_").slice(0,40);
-  return tsStamp()+"_"+nm+"."+ext; }
+  return tsStamp()+recPart()+"_"+nm+"."+ext; }
 function download(name,blob,fallbackId,append){
   const u=URL.createObjectURL(blob);
   const a=Object.assign(document.createElement("a"),{href:u,download:name});

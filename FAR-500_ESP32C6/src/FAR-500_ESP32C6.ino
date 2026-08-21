@@ -217,6 +217,12 @@ void logClearF(){ logCloseF(); LittleFS.remove(LOG_PATH); }
 void logDumpBle(){ if(!laptopConnected||!pLog) return;
   File f=LittleFS.open(LOG_PATH,FILE_READ);
   if(!f){ pLog->setValue("<<EOF>>"); pLog->notify(); return; }
+  // Eerste regel is altijd de bestandsgrootte (bytes), op verzoek, zodat de
+  // laptop-UI een echte %-voortgangsbalk kan tonen tijdens het ophalen i.p.v.
+  // alleen "bezig...". Geen normale databestandsregel, dus door de UI
+  // vóór het inlezen weggefilterd.
+  char szLine[24]; snprintf(szLine,sizeof(szLine),"#SIZE,%u",(unsigned)f.size());
+  pLog->setValue(szLine); pLog->notify(); delay(12);
   while(f.available()){ String l=f.readStringUntil('\n'); pLog->setValue(l.c_str()); pLog->notify(); delay(12); }
   f.close(); pLog->setValue("<<EOF>>"); pLog->notify(); }
 
@@ -486,8 +492,12 @@ void loop(){
 
   if(now-tLive>=LIVE_MS){ tLive=now; sauterRequest();
     if(laptopConnected){ uint32_t t=logging?(now-runStartMs):0;
-      char line[80]; snprintf(line,sizeof(line),"%lu,%.1f,%.0f,%d,%.1f,%.1f,%.1f,%d",
-        (unsigned long)t, angle, lastForce, batPct, rawX, rawY, rawZ, logging?1:0);
+      // 9e veld (measNum) op verzoek toegevoegd zodat de laptop-UI het
+      // opnamenummer van de huidige/laatste meting kan volgen (voor de
+      // bestandsnaam en het PDF-rapport) zonder los het device-log te
+      // moeten importeren.
+      char line[96]; snprintf(line,sizeof(line),"%lu,%.1f,%.0f,%d,%.1f,%.1f,%.1f,%d,%u",
+        (unsigned long)t, angle, lastForce, batPct, rawX, rawY, rawZ, logging?1:0, measNum);
       pData->setValue(line); pData->notify(); } }
   if(logging && logOpen && now-tLog>=LOG_MS){ tLog=now;
     char row[48]; snprintf(row,sizeof(row),"%lu,%.1f,%.1f",(unsigned long)(now-runStartMs),angle,lastForce);

@@ -47,6 +47,66 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-21** (vervolg: %-voortgangsbalk bij DUMP-transfers + opnamenummer
+  in PDF-rapport en bestandsnamen, op verzoek, in `FAR-500.html` +
+  `FAR-500_ESP32C6.ino`):
+  - **Voortgangsbalk bij "Importeer geschiedenis" én "Device-log"** (zelfde
+    onderliggende DUMP-overdracht): beide knoppen gaan nu op grijs zodra een
+    transfer loopt (er kan er maar 1 gelijktijdig lopen) en tonen een
+    %-balk. Voor een écht percentage (i.p.v. alleen "bezig...") stuurt de
+    firmware nu de bestandsgrootte als allereerste regel (`#SIZE,<bytes>`,
+    nieuw in `logDumpBle()`) -- **dit vereist een reflash**, zie hieronder.
+    Met de nog niet-geflashte firmware (huidige situatie: device niet
+    aangesloten deze sessie, COM10 niet gevonden) werkt de UI-kant al wel
+    correct terug naar de oude situatie: knoppen grijs + "bezig..."-melding,
+    gewoon zonder percentage totdat er geflashed is.
+  - **Opnamenummer (device-#MEAS-teller) nu overal waar een meting
+    getoond/geëxporteerd wordt**: rechtsboven in een kader ("#<nr>") in het
+    PDF/XLSX-rapport, direct onder de "FAR-500 / bedienkracht-analyse"-kop;
+    en in **alle** exportbestandsnamen (Meetgegevens XLSX/CSV via `fname()`,
+    rapport-XLSX/PDF via `fnameSuffix()`) direct na de tijdstempel, vóór
+    merk/type (bv. `20260821_140501_49_Falco_Premium_analyse.pdf`).
+    Bronnen van het nummer: (a) **live meting** -- de telemetrie-regel kreeg
+    een 9e veld (`measNum`, nieuw in de firmware-`loop()`) zodat de UI het
+    nummer real-time volgt (`liveTracking`); (b) **geladen uit de
+    device-geschiedenis-dropdown** (2026-08-21 eerder vandaag) -- number al
+    bekend uit het `#MEAS`-blok, geen firmware-wijziging nodig; (c)
+    **geladen oude meting via GitHub** -- alleen bekend als het bestand na
+    deze wijziging geëxporteerd is (nieuwe metadata-rij "Meting nr" in
+    `metaRows()`); oudere GitHub-exports missen dit veld, dan blijft het
+    nummer onbekend en wordt het kader/bestandsnaam-segment gewoon
+    weggelaten (geen "null"/leeg segment). Een verse "Start meting" (via UI
+    of drukknop) reset het bijhouden altijd weer naar "volg het live
+    device-nummer" (`liveTracking=true` in `resetAnalysis()`), zodat een
+    eerder handmatig geladen historisch nummer niet blijft plakken.
+  - **Firmware-reflash nog niet uitgevoerd**: het ESP32-C6-board was deze
+    sessie niet aangesloten (COM10 niet gevonden bij `[System.IO.Ports.
+    SerialPort]::getportnames()`) -- de broncode is aangepast en compileert
+    succesvol (`pio run`, RAM 8.2%/Flash 63.0%, geen fouten/warnings), maar
+    **nog niet naar het device geüpload**. Zonder die reflash werken de
+    live-opnamenummer-tracking (9e telemetrieveld) en de echte %-balk (
+    `#SIZE`-regel) nog niet -- de UI degradeert dan gracieus naar "onbekend
+    nummer" resp. een "bezig..."-indicator zonder percentage, dus niets
+    breekt. Reflash zodra het board weer aangesloten is met het
+    gebruikelijke commando (zie Upload-log), daarna in het veld bevestigen
+    dat het opnamenummer/percentage correct meekomt.
+  - **Getest**: `pio run` (compileert, zie boven), `node --check`, en een
+    uitgebreide jsdom-run (31 checks) die dekt: beide DUMP-knoppen grijs +
+    balk zichtbaar tijdens een transfer en weer terug na EOF/timeout; een
+    `#SIZE`-regel geeft een echt oplopend percentage, het ontbreken ervan
+    (oudere firmware-simulatie) laat de balk netjes op "bezig..." staan
+    zonder te crashen; de `#SIZE`-regel wordt nergens als databestandsregel
+    meegenomen; `curMeasNum`/`liveTracking` via alle 3 bronnen (live 9-velds
+    telemetrie, history-dropdown, GitHub-metadata) inclusief dat live
+    telemetrie een handmatig geladen nummer niet overschrijft totdat een
+    nieuwe meting start; bestandsnamen met en zonder bekend nummer; en dat
+    `buildAnalyseReportCanvas()` het kader+"#101" tekent zodra bekend en
+    volledig weglaat zodra niet. **Niet visueel gecontroleerd** in een echte
+    browser/PDF-viewer, en de firmware-kant (`#SIZE`/9e telemetrieveld) is
+    niet op het echte device getest (geen reflash mogelijk deze sessie) --
+    graag na de volgende reflash + veldmeting bevestigen dat de balk een
+    kloppend percentage toont en dat het opnamenummer klopt met de OLED-
+    teller.
 - **2026-08-21** (bugfix combinatieknop XLSX+PDF+GitHub + nieuwe dropdown om
   een individuele device-geschiedenis-meting te laden, op verzoek, alles in
   `FAR-500.html`):
