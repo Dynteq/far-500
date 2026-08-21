@@ -382,10 +382,13 @@ void drawOled(float angle){
   oled.drawStr(0,9,"HOEK");
   char b[8]; if(batPct<0) strcpy(b,"USB"); else snprintf(b,sizeof(b),"%d%%",batPct);
   oled.drawStr(128-oled.getStrWidth(b),9,b);
-  // meting-volgnummer: vierkant rechtsboven, naast de hoek, nummer rechts uitgelijnd erin
+  // meting-volgnummer: vierkant rechtsboven, naast de hoek, nummer rechts uitgelijnd erin.
+  // mbW verbreed van 26->32px (op verzoek) zodat 3 cijfers (100-999) niet
+  // tegen de kaderrand aan komen zoals bij de oude, voor 2 cijfers bedoelde
+  // breedte.
   oled.setFont(u8g2_font_5x7_tf);
   char mnum[6]; if(measNum>0) snprintf(mnum,sizeof(mnum),"%u",measNum); else strcpy(mnum,"-");
-  const int mbW=26, mbH=12, mbX=127-mbW, mbY=12;
+  const int mbW=32, mbH=12, mbX=127-mbW, mbY=12;
   oled.drawFrame(mbX,mbY,mbW,mbH);
   oled.drawStr(mbX+mbW-2-oled.getStrWidth(mnum), mbY+9, mnum);
   // Hoek: minder agressief tonen -- afgevlakt (EMA) en afgerond op 0,5 graad,

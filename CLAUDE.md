@@ -47,6 +47,48 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-21** (vervolg: OLED-teller-box verbreed + firmware geflashed +
+  bevestigd werkend, op verzoek):
+  - **Vraag beantwoord**: bij measNum=99 → volgende meting wordt 100, geen
+    reset naar "01" (`measNum` is een `uint16_t`, 0-65535, telt gewoon door
+    en wordt in Preferences/NVS bewaard over herstarts heen). Enige kleine
+    aandachtspunt: het OLED-tellervakje was met 26px breed bedoeld voor 1-2
+    cijfers.
+  - **OLED-tellervakje verbreed 26px→32px** (`drawOled()`,
+    `FAR-500_ESP32C6.ino`) zodat 3 cijfers (100-999) niet meer tegen de
+    kaderrand komen.
+  - **Firmware geflashed naar COM10** (board was eerst niet aangesloten/niet
+    gedetecteerd — geen match op VID_303A/10C4/1A86, ook geen COM10 in
+    `[System.IO.Ports.SerialPort]::getportnames()` — pas na opnieuw
+    aansluiten gevonden). Dit bracht ook de eerder deze dag geschreven
+    `#SIZE`-progressregel (DUMP-%-balk) en het 9e telemetrieveld (live
+    opnamenummer) voor het eerst daadwerkelijk op het device.
+  - **Upload-gotcha gevonden en opgelost**: de eerste 2 upload-pogingen
+    hingen minutenlang zonder enige output (leek in eerste instantie op een
+    vastgelopen reset/handshake, maar was dat niet). Root cause: esptool
+    5.3.0's nieuwe voortgangsbalk gebruikt Unicode blok-tekens (█/░), en
+    PlatformIO's Windows-console-echo-thread crasht daarop met een
+    `UnicodeEncodeError` (cp1252 kan die tekens niet coderen) — de hoofd-
+    `pio run`-thread blijft daarna voor altijd hangen wachten op die dode
+    thread (deadlock), zonder foutmelding. Fix: `PYTHONIOENCODING=utf-8`
+    zetten vóór het upload-commando. **Voor toekomstige uploads**: gebruik
+    dus `export PYTHONIOENCODING=utf-8; export PLATFORMIO_CORE_DIR="C:\pio";
+    & "$HOME\.platformio\penv\Scripts\pio.exe" run -d
+    "C:\dev\FAR-500\FAR-500_ESP32C6" -t upload --upload-port COM10` (1 extra
+    export t.o.v. het eerdere commando in dit Upload-log). Bij de 2 hang-
+    pogingen werd alleen de bootloader (deels/geheel) herschreven op
+    0x0-0x5fff, nooit de LittleFS-partitie (die wordt door `-t upload` sowieso
+    nooit aangeraakt) — geen opgeslagen metingen zijn dus ooit in gevaar
+    geweest, en de uiteindelijke succesvolle 3e poging herschreef
+    bootloader/partitions/boot_app0/firmware toch nog eens allemaal
+    consistent.
+  - **Build/upload succesvol bevestigd**: RAM 8.2% (26940/327680 B), Flash
+    63.0% (825188/1310720 B) -- exact gelijk aan de laatste bekend-goede
+    build. Alle 4 delen (bootloader.bin@0x0, partitions.bin@0x8000,
+    boot_app0.bin@0xe000, firmware.bin@0x10000) geschreven + hash-
+    geverifieerd, hard reset via RTS-pin.
+  - **Live bevestigd door gebruiker**: zowel het verbrede OLED-tellervakje
+    als de %-balk bij "Importeer geschiedenis" werken nu goed.
 - **2026-08-21** (vervolg: knop "Opslaan" + grafiek-opmaakfixes (tickmarks
   terug zonder "cm", écht root-cause-fix voor "handvathoogte"-overlap, 2x
   grotere rode afkeur-punten), op verzoek, alles in `FAR-500.html`,
@@ -130,17 +172,12 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
     of drukknop) reset het bijhouden altijd weer naar "volg het live
     device-nummer" (`liveTracking=true` in `resetAnalysis()`), zodat een
     eerder handmatig geladen historisch nummer niet blijft plakken.
-  - **Firmware-reflash nog niet uitgevoerd**: het ESP32-C6-board was deze
-    sessie niet aangesloten (COM10 niet gevonden bij `[System.IO.Ports.
-    SerialPort]::getportnames()`) -- de broncode is aangepast en compileert
-    succesvol (`pio run`, RAM 8.2%/Flash 63.0%, geen fouten/warnings), maar
-    **nog niet naar het device geüpload**. Zonder die reflash werken de
-    live-opnamenummer-tracking (9e telemetrieveld) en de echte %-balk (
-    `#SIZE`-regel) nog niet -- de UI degradeert dan gracieus naar "onbekend
-    nummer" resp. een "bezig..."-indicator zonder percentage, dus niets
-    breekt. Reflash zodra het board weer aangesloten is met het
-    gebruikelijke commando (zie Upload-log), daarna in het veld bevestigen
-    dat het opnamenummer/percentage correct meekomt.
+  - **Firmware inmiddels geflashed en bevestigd werkend** (zie Upload-log
+    voor het exacte commando/COM-poort/probleem-onderweg): live-opnamenummer-
+    tracking (9e telemetrieveld) en de echte %-balk (`#SIZE`-regel) draaien
+    nu op het device. Gebruiker heeft na deze reflash bevestigd dat zowel de
+    verbrede OLED-teller-box (zie volgende sessie-notitie) als de %-balk bij
+    "Importeer geschiedenis" goed werken.
   - **Getest**: `pio run` (compileert, zie boven), `node --check`, en een
     uitgebreide jsdom-run (31 checks) die dekt: beide DUMP-knoppen grijs +
     balk zichtbaar tijdens een transfer en weer terug na EOF/timeout; een
@@ -1120,6 +1157,34 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
 - PlatformIO-project: `FAR-500_ESP32C6/` (env `esp32-c6-devkitm-1`), sketch in `src/`.
 
 ## Upload-log (firmware -> ESP32-C6)
+- **2026-08-21**: OLED-tellervakje (26→32px) + `#SIZE`-DUMP-progressregel +
+  9e telemetrieveld (measNum) succesvol geupload naar COM10 (bash-tool, dit
+  Claude Code-environment op Windows). Board was aanvankelijk niet
+  aangesloten/gedetecteerd (geen COM10, geen VID_303A/10C4/1A86-match) --
+  na opnieuw aansluiten wel gevonden.
+  - **Nieuw probleem gevonden (Windows-console + esptool 5.x)**: `pio run -t
+    upload` hing 2x minutenlang zonder enige output/foutmelding (leek op een
+    vastgelopen reset-handshake, was het niet). Oorzaak: esptool 5.3.0's
+    voortgangsbalk gebruikt Unicode blok-tekens (█/░); PlatformIO's
+    Windows-console-echo-thread crasht daarop (`UnicodeEncodeError`, cp1252
+    kan die tekens niet coderen) en de hoofd-`pio run`-thread blijft daarna
+    voor altijd wachten op die dode thread (silent deadlock, geen
+    stacktrace zichtbaar totdat je het proces zelf non-blocking uitleest).
+  - **Fix/nieuw commando**: zet ook `PYTHONIOENCODING=utf-8`, vóór
+    `PLATFORMIO_CORE_DIR`:
+    `export PYTHONIOENCODING=utf-8; export PLATFORMIO_CORE_DIR="C:\pio"; &
+    "$HOME\.platformio\penv\Scripts\pio.exe" run -d
+    "C:\dev\FAR-500\FAR-500_ESP32C6" -t upload --upload-port COM10` — hiermee
+    liep de upload de 3e keer wél gewoon door tot een normale afronding.
+  - Build: RAM 8.2% (26940/327680 B), Flash 63.0% (825188/1310720 B) --
+    ongewijzigd t.o.v. de laatste bekend-goede build (alleen kleine
+    logica-/layout-wijzigingen, geen nieuwe dependencies). Alle 4 image-
+    delen (bootloader/partitions/boot_app0/firmware) geschreven + hash-
+    geverifieerd. `-t upload` raakt nooit de LittleFS-partitie aan, dus de 2
+    hang-pogingen (die alleen de bootloader deels herschreven voor ze
+    vastliepen) hebben nooit risico gevormd voor de opgeslagen metingen.
+    Live bevestigd door de gebruiker: OLED-vakje en de DUMP-%-balk werken
+    beide goed.
 - **2026-07-27**: `FAR-500_ESP32C6_v5.ino` succesvol geupload naar COM10 via PlatformIO (project: `FAR-500_ESP32C6/`, env `esp32-c6-devkitm-1`).
   - Sketch stond los in de projectroot en is gekopieerd naar `FAR-500_ESP32C6/src/`.
   - Commando: `pio run -d "C:\DEV\Claude\FAR-500_ESP32C6" -t upload`
