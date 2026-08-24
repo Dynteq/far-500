@@ -320,7 +320,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-24 16:00</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-24 17:15</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -522,7 +522,7 @@ let dumpTimer=null;
 // te breken tijdens een reeks retries.
 function armDumpTimeout(){
   clearTimeout(dumpTimer);
-  dumpTimer=setTimeout(()=>{ if(dumping){ dumping=false; endDumpUi();
+  dumpTimer=setTimeout(()=>{ if(dumping){ dumping=false; endDumpUi(); send("DUMPCANCEL");
     alert("Download afgebroken: er kwam 10s geen data meer binnen van het device (verbinding of BLE-overdracht haperde). Probeer opnieuw."); } },10000);
 }
 $("btnResetRange").onclick=()=>{ diag.xmin=diag.ymin=diag.zmin=1e9; diag.xmax=diag.ymax=diag.zmax=-1e9; updateDiag(); };
@@ -696,7 +696,7 @@ function onLog(e){ if(!dumping) return; const raw=dec.decode(e.target.value);
   if(seqMatch){
     const seq=parseInt(seqMatch[1],10);
     if(dumpExpectedSeq!=null && seq!==dumpExpectedSeq){
-      dumping=false; clearTimeout(dumpTimer); endDumpUi();
+      dumping=false; clearTimeout(dumpTimer); endDumpUi(); send("DUMPCANCEL");
       alert("Download afgebroken: er ontbreekt een regel in de overdracht (volgnummer "+dumpExpectedSeq+" oversprongen, kreeg "+seq+"). Probeer opnieuw.");
       return;
     }

@@ -112,7 +112,7 @@ float batV=0; int batPct=0; int fsFreePct=100;
 bool  logging=false; uint32_t runStartMs=0;
 uint16_t measNum=0;   // meting-volgnummer, telt op vanaf 1 bij elke START, persistent over herstarts heen
 File  logFile; bool logOpen=false;
-volatile bool reqTare=false, reqDump=false, reqClear=false;
+volatile bool reqTare=false, reqDump=false, reqClear=false, reqDumpCancel=false;
 
 int   mode=M_NORMAL;
 float calVec0[3]={0,0,0};
@@ -270,7 +270,15 @@ void stepDumpBle(uint32_t now){
   // beschouwen en de OLED weer vrijgeven i.p.v. voor altijd "vast" te laten
   // staan op de overdracht-status.
   if(now-dumpLastOkMs>10000){ finishDumpBle(); showMsg("Geschiedenis","timeout",2000); return; }
-  if(now-dumpLastStepMs<12) return;   // zelfde pacing als de oude delay(12)
+  // Pacing verhoogd van 12ms naar 40ms (op verzoek n.a.v. gemelde
+  // volgnummer-gaten tijdens een echte overdracht): notify() geeft alleen
+  // aan dat de ESP32 een verzendverzoek heeft geaccepteerd, niet dat de
+  // VORIGE waarde al daadwerkelijk over de lucht ging. Bij een BLE-
+  // connection-interval die groter is dan de pacing (vaak 15-30ms+ op
+  // Windows) overschrijft setValue()+notify() de nog-niet-verzonden vorige
+  // regel stilzwijgend -- geen foutcode, gewoon weg. 40ms geeft ruim de
+  // tijd voor 1 verbindings-event, ook bij een wat ruimer interval.
+  if(now-dumpLastStepMs<40) return;
   dumpLastStepMs=now;
 
   String payload; bool isEof=false;
@@ -391,6 +399,12 @@ class CtrlCB : public NimBLECharacteristicCallbacks {
     else if(cmd=="STOP"){ if(logging) toggleLogging(); }
     else if(cmd=="TARE"){ if(mode==M_NORMAL) reqTare=true; }   // alleen via laptop-UI
     else if(cmd=="DUMP"){ reqDump=true; }
+    // Laptop-UI stuurt dit als ze een overdracht zelf afbreekt (bv. een
+    // gedetecteerd volgnummer-gat of de eigen stilte-timeout) -- zonder dit
+    // bleef het device gewoon de rest van het bestand doorsturen naar een
+    // kant die allang niet meer luistert (op verzoek: "raar dat de ESP32
+    // gewoon doorgaat tot 100%").
+    else if(cmd=="DUMPCANCEL"){ reqDumpCancel=true; }
     else if(cmd=="CLEAR"){ reqClear=true; }
     // as-schakelen bestaat niet meer
   }
@@ -586,6 +600,7 @@ void loop(){
       prefs.putFloat("r0x",ref0[0]); prefs.putFloat("r0y",ref0[1]); prefs.putFloat("r0z",ref0[2]); } }
   if(reqClear){ reqClear=false; logClearF(); }
   if(reqDump){ reqDump=false; startDumpBle(now); }
+  if(reqDumpCancel){ reqDumpCancel=false; if(dumpActive) finishDumpBle(); }
   stepDumpBle(now);
 
   float angle;

@@ -47,6 +47,44 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-24** (vervolg: echte volgnummer-gaten gevonden tijdens een
+  live-test in Chrome + DUMPCANCEL, op verzoek naar aanleiding van herhaalde
+  "volgnummer X oversprongen"-meldingen):
+  - **De gap-detectie uit de vorige entry werkte zoals bedoeld** en ving nu
+    voor het eerst een écht probleem: tijdens een live "Importeer
+    geschiedenis" in Chrome vielen structureel 1-2 regels per keer weg
+    (bv. verwacht 211, gekregen 213). Waarschijnlijke oorzaak: `notify()`
+    bevestigt alleen dat de ESP32 een verzendverzoek heeft geaccepteerd, NIET
+    dat de vórige waarde al daadwerkelijk over de lucht ging -- bij een
+    BLE-connection-interval die groter is dan de verzendpacing (12ms) kan
+    `setValue()+notify()` de nog-niet-verstuurde vorige regel stilzwijgend
+    overschrijven (geen foutcode, gewoon weg). Pacing in `stepDumpBle()`
+    verhoogd van 12ms naar **40ms** om ruim binnen 1 verbindings-event te
+    blijven.
+  - **Bijkomend, verklarend gevonden probleem**: één gemelde melding
+    ("volgnummer 0 oversprongen") wees op **stream-interleaving** -- de
+    gebruiker klikte na een mislukte import op "opnieuw", maar het device
+    was zelf nog gewoon de VORIGE (allang opgegeven) overdracht aan het
+    afmaken (bevestigd: "de ESP32 blijft gewoon doorgaan tot 100%", een
+    losstaande observatie die niets met de dataverlies-bug te maken had
+    maar wel bevestigde dat er geen cancel-mechanisme was) -- de restjes van
+    de oude stream kwamen dan door elkaar met de net gestarte nieuwe stream
+    binnen op dezelfde characteristic. Fix: nieuw CTRL-commando
+    **`DUMPCANCEL`** (`reqDumpCancel`/`finishDumpBle()` in de firmware) dat
+    de laptop-UI nu verstuurt zodra ZIJ een overdracht afbreekt (zowel bij
+    een gedetecteerd volgnummer-gat als bij de 10s-stilte-timeout, zie
+    `armDumpTimeout()`/`onLog()` in `FAR-500.html`) -- het device stopt dan
+    meteen i.p.v. de rest van een groot logbestand nutteloos door te blijven
+    sturen naar een kant die al lang niet meer luistert.
+  - **Getest**: `pio run` (compileert schoon, RAM 8.2%/Flash 63.1%), `node
+    --check`, en alle 4 bestaande jsdom-testbestanden opnieuw gedraaid (geen
+    regressies -- `send()` is in de tests een no-op zolang `ctrlChar` null
+    is, dus de nieuwe `send("DUMPCANCEL")`-aanroepen breken niets).
+    Geflashed naar COM10, hash-geverifieerd. **Nog niet opnieuw live
+    bevestigd** dat de 40ms-pacing de volgnummer-gaten daadwerkelijk
+    wegneemt (alleen de eerdere OLED/protocol-fixes waren al bevestigd) --
+    graag nogmaals een "Importeer geschiedenis" met een groter logbestand
+    proberen en melden of er nog gaten optreden.
 - **2026-08-24** (afronding van de BLE-DUMP-betrouwbaarheidssaga hieronder —
   meerdere iteraties, uiteindelijk werkend bevestigd door de gebruiker,
   gecommit+gepusht): de 2026-08-21-entry direct hieronder ("BLE-overdracht
