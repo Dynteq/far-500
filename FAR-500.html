@@ -320,7 +320,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-21 15:20</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-08-24 16:00</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -343,6 +343,13 @@ let measHistory=[];   // geïmporteerde meting-geschiedenis: [{num,n,durS,rows:[
 // niet meer overschrijft totdat de volgende "Start meting" het weer aanzet.
 let curMeasNum=null, liveTracking=true;
 let dumpTotalBytes=0, dumpRecvBytes=0;   // voor de %-voortgangsbalk bij DUMP-transfers
+// Elke DUMP-regel komt binnen als "<seq>:<inhoud>" (oplopend volgnummer,
+// zie firmware logDumpBle()) -- dumpExpectedSeq bewaakt dat er geen regel
+// ontbreekt (kon voorheen, met NOTIFY zonder volgnummers, een "#MEAS,..."-
+// markerregel stilzwijgend laten wegvallen en zo 2 metingen laten
+// samensmelten in de geschiedenis). null = geen dump bezig / oudere
+// firmware zonder volgnummers (dan wordt er niet gevalideerd).
+let dumpExpectedSeq=null;
 let diag={x:NaN,y:NaN,z:NaN,xmin:1e9,xmax:-1e9,ymin:1e9,ymax:-1e9,zmin:1e9,zmax:-1e9};
 const dec=new TextDecoder(), $=id=>document.getElementById(id);
 const dot=$("dot"), connTxt=$("connTxt");
@@ -502,18 +509,21 @@ function endDumpUi(){
 }
 function startDump(mode){
   dumpMode=mode; dumpLines=[]; dumping=true; dumpTotalBytes=0; dumpRecvBytes=0;
+  dumpExpectedSeq=0;   // firmware start elke DUMP-overdracht weer bij volgnummer 0
   startDumpUi(mode); send("DUMP"); armDumpTimeout();
 }
 $("btnDump").onclick =()=>startDump("raw");
 $("btnHistImport").onclick=()=>startDump("history");
 let dumpTimer=null;
-// zonder ack/flow-control op de DUMP-stream (zie firmware logDumpBle()) kan een
-// weggevallen notify de import voor altijd laten hangen zonder foutmelding --
-// deze timeout breekt af zodra er 5s niets meer binnenkomt.
+// De firmware bevestigt sinds kort elke DUMP-regel via een BLE-indicatie
+// (ATT-confirm) met tot 3 pogingen (zie logDumpBle()/sendLogLineReliable()) --
+// dat kan per regel iets langer duren dan de oude fire-and-forget NOTIFY,
+// dus de stilte-timeout is ruimer gezet (10s i.p.v. 5s) om niet onnodig af
+// te breken tijdens een reeks retries.
 function armDumpTimeout(){
   clearTimeout(dumpTimer);
   dumpTimer=setTimeout(()=>{ if(dumping){ dumping=false; endDumpUi();
-    alert("Download afgebroken: er kwam 5s geen data meer binnen van het device (verbinding of BLE-overdracht haperde). Probeer opnieuw."); } },5000);
+    alert("Download afgebroken: er kwam 10s geen data meer binnen van het device (verbinding of BLE-overdracht haperde). Probeer opnieuw."); } },10000);
 }
 $("btnResetRange").onclick=()=>{ diag.xmin=diag.ymin=diag.zmin=1e9; diag.xmax=diag.ymax=diag.zmax=-1e9; updateDiag(); };
 function updateRun(){ $("runState").textContent=running?"loopt":"gestopt";
@@ -671,7 +681,27 @@ function updateDiag(){
   const rng=(mn,mx,id)=>$(id).textContent=(mx<mn)?"":("["+mn.toFixed(1)+"…"+mx.toFixed(1)+"  Δ"+(mx-mn).toFixed(1)+"]");
   rng(diag.xmin,diag.xmax,"rngX"); rng(diag.ymin,diag.ymax,"rngY"); rng(diag.zmin,diag.zmax,"rngZ");
 }
-function onLog(e){ if(!dumping) return; const line=dec.decode(e.target.value);
+function onLog(e){ if(!dumping) return; const raw=dec.decode(e.target.value);
+  // Elke DUMP-regel begint met "<seq>:<inhoud>" (oplopend volgnummer vanaf 0,
+  // zie firmware logDumpBle()/sendLogLineReliable()) -- ontbreekt dat
+  // voorvoegsel (oudere firmware van vóór deze uitbreiding), dan wordt de
+  // rauwe regel gebruikt zonder volgnummer-controle. Een gat in de
+  // volgnummers (een regel die ook na 3 pogingen niet bevestigd raakte)
+  // breekt de import nu direct af met een duidelijke fout i.p.v. de regel
+  // stilzwijgend te missen -- dat kon voorheen een "#MEAS,..."-markerregel
+  // raken en zo 2 metingen in de geschiedenis laten samensmelten zonder dat
+  // iemand het zag.
+  const seqMatch=raw.match(/^(\d+):([\s\S]*)$/);
+  const line=seqMatch?seqMatch[2]:raw;
+  if(seqMatch){
+    const seq=parseInt(seqMatch[1],10);
+    if(dumpExpectedSeq!=null && seq!==dumpExpectedSeq){
+      dumping=false; clearTimeout(dumpTimer); endDumpUi();
+      alert("Download afgebroken: er ontbreekt een regel in de overdracht (volgnummer "+dumpExpectedSeq+" oversprongen, kreeg "+seq+"). Probeer opnieuw.");
+      return;
+    }
+    dumpExpectedSeq=seq+1;
+  }
   if(line.trim()==="<<EOF>>"){ dumping=false; clearTimeout(dumpTimer); endDumpUi();
     if(dumpMode==="history"){ importHistory(dumpLines); }
     else if(dumpLines.length) download("device_log.csv",new Blob([dumpLines.join("\r\n")],{type:"text/csv"}));

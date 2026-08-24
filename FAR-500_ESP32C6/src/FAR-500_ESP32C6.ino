@@ -214,17 +214,86 @@ void logOpenW(){ bool ex=LittleFS.exists(LOG_PATH);
   if(logFile){ if(!ex||logFile.size()==0) logFile.println(CSV_HEADER); logOpen=true; } }
 void logCloseF(){ if(logOpen){ logFile.flush(); logFile.close(); logOpen=false; } }
 void logClearF(){ logCloseF(); LittleFS.remove(LOG_PATH); }
-void logDumpBle(){ if(!laptopConnected||!pLog) return;
-  File f=LittleFS.open(LOG_PATH,FILE_READ);
-  if(!f){ pLog->setValue("<<EOF>>"); pLog->notify(); return; }
-  // Eerste regel is altijd de bestandsgrootte (bytes), op verzoek, zodat de
-  // laptop-UI een echte %-voortgangsbalk kan tonen tijdens het ophalen i.p.v.
-  // alleen "bezig...". Geen normale databestandsregel, dus door de UI
-  // vóór het inlezen weggefilterd.
-  char szLine[24]; snprintf(szLine,sizeof(szLine),"#SIZE,%u",(unsigned)f.size());
-  pLog->setValue(szLine); pLog->notify(); delay(12);
-  while(f.available()){ String l=f.readStringUntil('\n'); pLog->setValue(l.c_str()); pLog->notify(); delay(12); }
-  f.close(); pLog->setValue("<<EOF>>"); pLog->notify(); }
+/* ---- DUMP-overdracht (niet-blokkerend, 1 regel per loop()-tick) ----------
+   Stond eerst als 1 grote blokkerende functie (while(f.available()){...}),
+   aangeroepen vanuit loop() -- bij een groot logbestand (veel metingen)
+   bleef loop() daardoor minutenlang hangen in die ene aanroep, dus ook de
+   OLED-refresh (drawOled(), ook in loop()) stond al die tijd stil: exact het
+   gemelde "hoekweergave wordt onzettend traag zodra ik op Importeer
+   geschiedenis klik". Nu een kleine state machine: startDumpBle() opent
+   alleen het bestand en zet de status klaar, stepDumpBle() (aangeroepen bij
+   elke loop()-tick) verstuurt telkens hooguit 1 regel en keert direct terug
+   -- loop() (en dus drawOled()) blijft daardoor gewoon op zijn normale
+   150ms-tempo doorlopen tijdens een overdracht. */
+bool dumpActive=false;
+File dumpFile;
+uint32_t dumpSeq=0, dumpTotalBytes=0, dumpSentBytes=0;
+bool dumpSizeSent=false;
+uint32_t dumpLastStepMs=0;   // pacing tussen regels (was delay(12) in de oude blokkerende versie)
+uint32_t dumpLastOkMs=0;     // laatste succesvolle notify() -- basis voor de 10s stall-detectie
+
+// now: dezelfde millis()-snapshot als loop() voor deze tick gebruikt (i.p.v.
+// hier zelf een nieuwe millis() op te vragen) -- bug gevonden en gefixt:
+// startDumpBle() werd aangeroepen ná het vastleggen van `now` bovenaan
+// loop(), dus een verse millis()-aanroep hier kon een paar microseconden
+// LATER uitkomen dan die `now`. Omdat dumpLastOkMs/now allebei uint32_t
+// zijn, gaf dumpLastOkMs>now in de eerstvolgende stepDumpBle(now)-aanroep
+// een underflow bij "now-dumpLastOkMs" (wrapt naar ~4 miljard), wat de
+// 10s-stall-check meteen liet afgaan -- verklaart de gemelde ogenblikkelijke
+// "mislukt (timeout)" in plaats van een echte 10s wachttijd.
+void startDumpBle(uint32_t now){
+  if(!laptopConnected||!pLog) return;
+  dumpFile=LittleFS.open(LOG_PATH,FILE_READ);
+  dumpSeq=0; dumpSentBytes=0; dumpSizeSent=false; dumpLastStepMs=0;
+  dumpTotalBytes = dumpFile? (uint32_t)dumpFile.size() : 0;
+  dumpLastOkMs=now;
+  dumpActive=true;
+}
+void finishDumpBle(){ dumpActive=false; if(dumpFile) dumpFile.close(); }
+// Aangeroepen bij elke loop()-tick (no-op als er geen overdracht loopt).
+// Verstuurt via NOTIFY (fire-and-forget, zie toelichting bij LOG_UUID
+// hierboven) met tot 3 directe herhalingen bij een volle queue, maar zonder
+// op een reactie van de laptop te wachten. Elke regel (incl. #SIZE/#MEAS-
+// markers en <<EOF>>) krijgt een oplopend volgnummer "<seq>:<inhoud>" zodat
+// de UI een ontbrekende regel altijd kan detecteren i.p.v. 'm stilzwijgend
+// te missen (zie onLog() in FAR-500.html) -- zonder daarvoor een
+// risicovolle ATT-confirm (INDICATE) nodig te hebben.
+void stepDumpBle(uint32_t now){
+  if(!dumpActive) return;
+  // showMsg() tekent met het vaste-breedte "7x13B"-font (7px/teken) op een
+  // 128px-scherm -- dus regels hier moeten <=18 tekens blijven (liever
+  // ruim eronder) om niet af te snijden aan de rechterkant. "mislukt
+  // (timeout)" (18 tekens, exact de volle breedte) sneed daardoor de
+  // laatste ")" af -- vandaar het korte "timeout" hieronder.
+  if(!laptopConnected){ finishDumpBle(); showMsg("Geschiedenis","verbinding weg",2000); return; }
+  // Nog geen enkele regel bevestigd binnen 10s -> overdracht als mislukt
+  // beschouwen en de OLED weer vrijgeven i.p.v. voor altijd "vast" te laten
+  // staan op de overdracht-status.
+  if(now-dumpLastOkMs>10000){ finishDumpBle(); showMsg("Geschiedenis","timeout",2000); return; }
+  if(now-dumpLastStepMs<12) return;   // zelfde pacing als de oude delay(12)
+  dumpLastStepMs=now;
+
+  String payload; bool isEof=false;
+  if(!dumpFile){ payload="<<EOF>>"; isEof=true; }
+  else if(!dumpSizeSent){
+    // Bestandsgrootte als allereerste regel, op verzoek, zodat de laptop-UI
+    // een echte %-voortgangsbalk kan tonen i.p.v. alleen "bezig...".
+    char sz[24]; snprintf(sz,sizeof(sz),"#SIZE,%u",dumpTotalBytes);
+    payload=sz; dumpSizeSent=true;
+  } else if(dumpFile.available()){ payload=dumpFile.readStringUntil('\n'); }
+  else { payload="<<EOF>>"; isEof=true; }
+
+  String line=String(dumpSeq)+":"+payload;
+  bool ok=false;
+  for(int attempt=0; attempt<3 && !ok; attempt++){
+    pLog->setValue(line.c_str());
+    ok=pLog->notify();
+    if(!ok) delay(5);
+  }
+  dumpSeq++;
+  if(ok){ dumpLastOkMs=now; dumpSentBytes+=payload.length()+1; }
+  if(isEof) finishDumpBle();
+}
 
 /* ============================ MEET-STEUR ================================== */
 void showMsg(const char* l1,const char* l2,uint32_t ms){
@@ -302,6 +371,19 @@ class SrvCB : public NimBLEServerCallbacks {
   void onDisconnect(NimBLEServer* s, NimBLEConnInfo& ci, int reason) override {
     laptopConnected=false; NimBLEDevice::startAdvertising(); }
 };
+// pLog stond hier kort op INDICATE (met een blocking wait op de ATT-confirm
+// in sendLogLineReliable()) om een weggevallen DUMP-regel te voorkomen --
+// teruggedraaid: GATT-indicaties bleken op dit platform (Windows/Chrome Web
+// Bluetooth) onbetrouwbaar bevestigd te worden, waardoor de hoofdloop (en
+// dus ook de OLED-refresh) tot 1,5s per regel kon blijven hangen wachten op
+// een confirm die soms nooit kwam -- merkbaar als een trage OLED zodra de
+// laptop verbonden was, en een DUMP-overdracht die daardoor juist vaker
+// vastliep i.p.v. betrouwbaarder werd. Terug naar NOTIFY (fire-and-forget,
+// geen blocking wait); de oplopende volgnummers per regel (zie
+// stepDumpBle() verderop) blijven wél staan -- die geven de laptop-UI nog
+// steeds een manier om een gemiste regel te detecteren en de import netjes
+// af te breken i.p.v. 'm stilzwijgend te laten samensmelten, zonder dat
+// daar een risicovolle protocolwijziging voor nodig is.
 class CtrlCB : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& ci) override {
     String cmd=String(c->getValue().c_str()); cmd.trim(); cmd.toUpperCase();
@@ -361,8 +443,32 @@ void drawReading(float val,int y,const char* unit,bool useArrowSign){
   oled.drawStr(X_DOT,y,dp);
   oled.drawStr(X_DOT+oled.getStrWidth(dp)+1,y,unit);
 }
+// Overdracht-scherm tijdens "Importeer geschiedenis"/"Device-log" (op
+// verzoek): vervangt de normale hoek/kracht-uitlezing volledig zolang
+// dumpActive true is, zodat duidelijk is dat het device bezig is met
+// versturen i.p.v. gewoon te meten. Toont verbindingsstatus (BT-icoon +
+// tekst) en het %-verloop (dumpSentBytes/dumpTotalBytes, dezelfde bytes-
+// telling die ook naar de laptop-UI gaat).
+void drawDumpScreen(){
+  oled.setFont(u8g2_font_7x13B_tf);
+  drawCentered(12,"GESCHIEDENIS");
+  drawBluetooth(4,20,laptopConnected);
+  oled.setFont(u8g2_font_6x10_tf);
+  oled.drawStr(14,29, laptopConnected?"verbonden":"niet verbonden");
+  int pct = dumpTotalBytes>0 ? (int)(100.0f*dumpSentBytes/dumpTotalBytes) : 0;
+  if(pct>100) pct=100;
+  char pctNum[6]; snprintf(pctNum,sizeof(pctNum),"%d",pct);
+  oled.setFont(u8g2_font_logisoso18_tn);
+  int numW=oled.getStrWidth(pctNum);
+  int startX=(128-(numW+16))/2;
+  oled.drawStr(startX,58,pctNum);
+  oled.setFont(u8g2_font_6x10_tf);
+  oled.drawStr(startX+numW+2,58,"%");
+  oled.sendBuffer();
+}
 void drawOled(float angle){
   oled.clearBuffer();
+  if(dumpActive){ drawDumpScreen(); return; }
   if(mode==M_CAL1 || mode==M_CAL2){
     oled.setFont(u8g2_font_6x10_tf);
     oled.drawStr(0,10, mode==M_CAL1?"JUSTEREN 1/2":"JUSTEREN 2/2");
@@ -479,7 +585,8 @@ void loop(){
       ref0[0]=curVec[0]; ref0[1]=curVec[1]; ref0[2]=curVec[2];
       prefs.putFloat("r0x",ref0[0]); prefs.putFloat("r0y",ref0[1]); prefs.putFloat("r0z",ref0[2]); } }
   if(reqClear){ reqClear=false; logClearF(); }
-  if(reqDump){ reqDump=false; logDumpBle(); }
+  if(reqDump){ reqDump=false; startDumpBle(now); }
+  stepDumpBle(now);
 
   float angle;
   if(isnan(curVec[0])) angle=NAN;
@@ -494,7 +601,11 @@ void loop(){
 #endif
 
   if(now-tLive>=LIVE_MS){ tLive=now; sauterRequest();
-    if(laptopConnected){ uint32_t t=logging?(now-runStartMs):0;
+    // Live telemetrie bewust gepauzeerd tijdens een DUMP-overdracht (op
+    // verzoek) -- de UI toont toch geen live hoek/kracht terwijl er
+    // geïmporteerd wordt, en 1 characteristic minder op de BLE-verbinding
+    // scheelt contentie tijdens de bulk-overdracht.
+    if(laptopConnected && !dumpActive){ uint32_t t=logging?(now-runStartMs):0;
       // 9e veld (measNum) op verzoek toegevoegd zodat de laptop-UI het
       // opnamenummer van de huidige/laatste meting kan volgen (voor de
       // bestandsnaam en het PDF-rapport) zonder los het device-log te

@@ -47,6 +47,153 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-24** (afronding van de BLE-DUMP-betrouwbaarheidssaga hieronder —
+  meerdere iteraties, uiteindelijk werkend bevestigd door de gebruiker,
+  gecommit+gepusht): de 2026-08-21-entry direct hieronder ("BLE-overdracht
+  van 'Importeer geschiedenis'/'Device-log' betrouwbaarder gemaakt") beschrijft
+  de EERSTE aanpak (INDICATE+retry) — die bleek **averechts te werken** en is
+  teruggedraaid; lees die entry dus als historisch, niet als eindstand. Wat
+  er sindsdien is gebeurd, in volgorde:
+  1. **INDICATE teruggedraaid naar NOTIFY**: op het echte device (na
+     eindelijk een succesvolle reflash, zie Upload-log) bleek INDICATE de
+     zaak juist erger te maken — "Importeer geschiedenis" lukte niet meer
+     en de OLED-hoekweergave werd "onzettend traag" zodra de laptop
+     verbonden was. Oorzaak: `sendLogLineReliable()` blokkeerde de
+     hoofdloop tot 1,5s per regel wachtend op een ATT-confirm die er dankzij
+     onbetrouwbare INDICATE-ondersteuning op dit platform (Windows/Edge-Web
+     Bluetooth) vaak nooit kwam. Teruggedraaid naar NOTIFY (fire-and-forget,
+     geen wachttijd); de per-regel volgnummers (`"<seq>:<inhoud>"`) bleven
+     staan als vangnet tegen een stilzwijgend gemiste regel.
+  2. **Echte root cause van de OLED-traagheid gevonden**: niet INDICATE op
+     zich, maar dat `logDumpBle()` (ongeacht NOTIFY/INDICATE) altijd al 1
+     grote BLOKKERENDE functie was (`while(f.available()){...}`), aangeroepen
+     vanuit `loop()` — bij een groot logbestand (100+ metingen) bleef `loop()`
+     (en dus ook `drawOled()`, in dezelfde loop) minutenlang hangen in die ene
+     aanroep. Herschreven naar een niet-blokkerende state machine
+     (`startDumpBle(now)` + `stepDumpBle(now)`, max 1 regel per loop()-tick)
+     — `loop()` blijft nu gewoon op zijn normale 150ms-tempo doorlopen tijdens
+     een overdracht.
+  3. **Nieuwe OLED-overdracht-scherm toegevoegd** (op verzoek): tijdens een
+     DUMP-transfer toont de OLED nu `drawDumpScreen()` (titel + BT-
+     verbindingsstatus + live %) i.p.v. de normale hoek/kracht-uitlezing;
+     live-telemetrie naar de laptop (`pData`) wordt tijdens een transfer ook
+     gepauzeerd (minder BLE-contentie, en de UI toont toch geen live
+     waarden tijdens een import). Bij een mislukte/gestalde overdracht
+     (10s geen enkele succesvolle `notify()`, of BLE-verbinding weg) herstelt
+     de OLED zichzelf automatisch (via de bestaande `showMsg()`/`M_MSG`-
+     infrastructuur) i.p.v. voor altijd op het overdracht-scherm te blijven
+     hangen.
+  4. **2 losse, echte bugs gevonden tijdens het testen van bovenstaande**:
+     (a) `startDumpBle()` riep zelf een verse `millis()` op i.p.v. de
+     `now`-snapshot van de aanroepende `loop()`-tick door te geven — kon een
+     fractie later uitkomen dan die `now`, wat bij de eerstvolgende
+     `stepDumpBle(now)`-aanroep een **uint32_t-underflow** gaf op
+     `now-dumpLastOkMs` (wrapt naar ~4 miljard) en de 10s-stall-check
+     ONMIDDELLIJK liet afgaan i.p.v. na een echte 10s — verklaarde de
+     gemelde "direct" timeout. Fix: `now` wordt nu doorgegeven i.p.v. dat
+     `startDumpBle()` zelf `millis()` opvraagt. (b) De OLED-foutmelding
+     "mislukt (timeout)" (18 tekens) vulde bij het vaste-breedte 7px/teken
+     "7x13B"-font exact de volle 128px-schermbreedte, waardoor de laatste
+     ")" werd afgesneden (door de gebruiker zelf opgemerkt) — verkort naar
+     "timeout" (7 tekens); nieuwe kanttekening toegevoegd bij `showMsg()`-
+     aanroepen in `stepDumpBle()` dat 2-regelige OLED-berichten op dit font
+     ruim onder de ~18 tekens moeten blijven.
+  5. **Blijvend probleem na bovenstaande fixes bleek GEEN firmware-bug**:
+     "Importeer geschiedenis" liep na een verse BLE-herverbinding nog steeds
+     vast op exact dezelfde manier. Uitgezocht via PowerShell of Windows een
+     verouderde BLE-cache voor FAR-500 vasthield:
+     `Get-PnpDevice`/registry-onderzoek vond een LE-bond/fingerprint-cache
+     op `HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices\
+     f0f5bd2cc91a` (BLE-MAC, offset t.o.v. de eerder genoteerde base-MAC
+     `f0:f5:bd:2c:c9:18`) — bevestigd als FAR-500 via de `Name`/`LEName`-
+     bytewaarden (decoderen naar "FAR-...''). Met toestemming van de
+     gebruiker verwijderd (elevated PowerShell, `Remove-Item` op die ene
+     device-subkey — andere Bluetooth-apparaten ongemoeid). **Loste het
+     probleem niet op** (zelfde fout na een compleet verse pairing) — dus
+     achteraf bleek dit geen stale-cache-probleem te zijn geweest, wél de
+     moeite waard om uit te sluiten.
+  6. **Werkelijke laatste blokkade gevonden**: nadat de OLED-teller na
+     firmware-fix keurig tot 100% doorliep, gaf de laptop-UI ALSNOG "5s geen
+     data"-foutmelding — de "5s"-tekst verried dat de **live HTML nog de
+     oude, vóór-volgnummers-versie** was (`FAR-500.html`/de JS-kant van de
+     volgnummer-validatie was deze hele sessie al klaar en getest, maar
+     bewust nog niet gecommit/gepusht in afwachting van een succesvolle
+     veldtest). Met de nieuwe firmware die alle regels als `"<seq>:<inhoud>"`
+     verstuurt, herkende de oude/live JS (die dat voorvoegsel niet
+     wegstript) `"<<EOF>>"` niet meer omdat elke regel nu bv. als
+     `"247:<<EOF>>"` binnenkwam -- een pure protocol-versie-mismatch tussen
+     een al-bijgewerkte firmware en een nog niet gepushte UI, geen nieuwe
+     bug. Fix: gewoon de al-geschreven, al-geteste `FAR-500.html`-wijzigingen
+     nu committen+pushen (zie hieronder).
+  - **Uiteindelijk bevestigd werkend door de gebruiker** (na deze laatste
+    push): OLED blijft responsief tijdens een overdracht, "Importeer
+    geschiedenis" rondt af tot 100% en de UI verwerkt de data correct.
+  - **Getest** (naast de al eerder genoemde jsdom-suites, allemaal opnieuw
+    gedraaid ná deze laatste JS-push): `node --check`, alle 4 bestaande
+    jsdom-testbestanden (dump-progress/opnamenummer/grafiek-opmaak/
+    volgnummer-detectie) — alle groen, geen regressies. Firmware: `pio run`
+    compileert schoon bij elke tussenstap; alle reflashes hash-geverifieerd.
+- **2026-08-21** (vervolg: BLE-overdracht van "Importeer geschiedenis"/
+  "Device-log" betrouwbaarder gemaakt — sequentienummers + INDICATE+retry,
+  op verzoek naar aanleiding van 2 gemelde problemen; **HISTORISCH: de
+  INDICATE-aanpak hieronder is teruggedraaid, zie de 2026-08-24-entry
+  hierboven voor de uiteindelijke, werkende oplossing**):
+  - **Vraag beantwoord**: geen UDP/TCP — de device↔laptop-verbinding is
+    Bluetooth Low Energy (BLE) GATT, een heel ander protocol zonder IP-laag
+    (TCP/HTTPS wordt alleen gebruikt door de losse GitHub-upload-relay, niet
+    voor deze DUMP-overdracht). BLE's linklaag heeft wel een CRC + automatische
+    retransmissie voor losse radiopakketten, maar dat beschermt niet tegen
+    een volle notificatiequeue of RF-congestie op applicatieniveau.
+  - **Root cause gevonden voor 2 gemelde problemen**: (1) de 5s-stilte-
+    timeout die de import soms afbrak, en (2) dat opname #42 in de
+    geschiedenis-dropdown de data van zowel #42 als #43 bevatte, terwijl
+    #43 zelf niet in de lijst stond (44 wel). De "Log"-characteristic
+    (`pLog`) stond op **NOTIFY** (`FAR-500_ESP32C6.ino`) — fire-and-forget:
+    de firmware riep `notify()` aan zonder de return-waarde te checken, geen
+    enkele garantie dat de laptop een regel echt ontving. Bij een volle
+    notificatiequeue of een korte RF-hobbel viel een regel stilletjes weg;
+    als dat toevallig de `#MEAS,43,...`-markerregel was, bleef
+    `importHistory()` (die alleen op zo'n markerregel een nieuw blok start)
+    gewoon doorgaan met blok #42 voor alle volgende samples tot de volgende
+    overlevende marker (#44) — exact het gemelde symptoom, zonder dat er
+    ooit een foutmelding kwam.
+  - **Gekozen aanpak (met de gebruiker afgestemd via `AskUserQuestion`,
+    "grondiger"-optie)**: zowel de kans op een mislukte regel verkleinen als
+    een eventuele restfout altijd zichtbaar maken i.p.v. laten samensmelten:
+    (1) **`pLog` van NOTIFY naar INDICATE** — een indicatie krijgt een
+    ATT-confirm van de laptop terug (gemeld via de nieuwe `LogCB::onStatus()`
+    -callback, `code==0`=bevestigd); (2) nieuwe `sendLogLineReliable()`
+    verstuurt elke DUMP-regel met tot **3 pogingen** (elk met een 500ms-
+    wachttijd op de confirm) vóór hij een regel definitief opgeeft; (3) elke
+    regel (incl. `#SIZE`/`#MEAS`-markers en `<<EOF>>`) krijgt nu een
+    oplopend **volgnummer**-voorvoegsel (`"<seq>:<inhoud>"`, opgebouwd in
+    `logDumpBle()`) zodat de laptop-UI (`onLog()` in `FAR-500.html`) een gat
+    altijd kan detecteren — ook als alle 3 pogingen voor een regel toch nog
+    mislukken. Bij een gedetecteerd gat breekt de import nu direct af met
+    een duidelijke popup ("volgnummer X oversprongen") i.p.v. stilzwijgend
+    door te gaan met een corrupt resultaat. Oudere firmware zonder
+    volgnummers blijft ondersteund (UI valt dan terug op "geen controle",
+    geen breaking change voor een niet-geflashed board).
+  - De live-telemetrie-characteristic (`pData`) is bewust **NOT** aangepast
+    — blijft NOTIFY, af en toe een gemist live-sample is acceptabel en de
+    extra confirm-vertraging zou daar geen zin hebben.
+  - **UI-stilte-timeout verruimd van 5s naar 10s** (`armDumpTimeout()`) omdat
+    een reeks INDICATE-retries per regel iets langer kan duren dan de oude
+    fire-and-forget NOTIFY-aanpak; dit was tevens het 2e gemelde probleem
+    (transfer brak soms af na "minimaal 5 seconden").
+  - **Getest**: `pio run` (compileert schoon, RAM 8.2%/Flash 63.0%, zelfde
+    als de laatste bekend-goede build), `node --check`, en een gerichte
+    jsdom-run (12 checks) die o.a. **exact het gemelde scenario**
+    reproduceert (een kunstmatig weggelaten `#MEAS,43,...`-regel, dus een
+    gat in de volgnummers) en bevestigt dat de import dan direct afbreekt
+    met een duidelijke popup i.p.v. #42/#43 te laten samensmelten; een
+    schone, gat-loze sequentie geeft geen valse afbreking en splitst #42/#43
+    correct; en dat oudere (niet-geflashde) firmware zonder volgnummers nog
+    steeds gewoon werkt (backwards-compatibele fallback). **Niet live op het
+    device getest** (kon niet geflashed worden, board viel weg van COM10 —
+    zie de waarschuwing hierboven) — dus ook niet bevestigd dat de INDICATE-
+    aanpak de daadwerkelijke faalkans in het veld merkbaar verlaagt, alleen
+    dat de detectie/foutmelding bij een gat correct werkt.
 - **2026-08-21** (vervolg: OLED-teller-box verbreed + firmware geflashed +
   bevestigd werkend, op verzoek):
   - **Vraag beantwoord**: bij measNum=99 → volgende meting wordt 100, geen
@@ -1157,6 +1304,18 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
 - PlatformIO-project: `FAR-500_ESP32C6/` (env `esp32-c6-devkitm-1`), sketch in `src/`.
 
 ## Upload-log (firmware -> ESP32-C6)
+- **2026-08-24**: meerdere reflashes naar COM10 tijdens het uitzoeken van de
+  BLE-DUMP-betrouwbaarheidssaga (zie Huidige status hierboven voor de volle
+  toedracht) — telkens met het inmiddels standaard `PYTHONIOENCODING=utf-8`-
+  commando uit de 2026-08-21-entry hieronder, board werd tussendoor een paar
+  keer losgekoppeld/weer aangesloten op USB (elke keer `[System.IO.Ports.
+  SerialPort]::getportnames()` gebruikt om te checken of COM10 er weer was).
+  Volgorde: (1) INDICATE+retry geflashed -> bleek averechts te werken; (2)
+  terug naar NOTIFY + niet-blokkerende dump-state-machine + OLED-scherm
+  geflashed -> "instant timeout"-bug ontdekt tijdens testen; (3) millis()-
+  underflow-fix + kortere OLED-foutmelding geflashed -> **live bevestigd
+  werkend** door de gebruiker. Alle builds: RAM 8.2%, Flash ~63.0-63.1%
+  (verwaarloosbare groei), alle 4 image-delen steeds hash-geverifieerd.
 - **2026-08-21**: OLED-tellervakje (26→32px) + `#SIZE`-DUMP-progressregel +
   9e telemetrieveld (measNum) succesvol geupload naar COM10 (bash-tool, dit
   Claude Code-environment op Windows). Board was aanvankelijk niet
