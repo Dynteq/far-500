@@ -47,6 +47,48 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-08-24** (3e tabblad "Kracht_hoek" toegevoegd aan het XLSX-rapport, op
+  verzoek): in `FAR-500.html`.
+  - **Nieuwe helperfuncties** (direct na `buildReportDataRows()`): `median()`,
+    `robustMeanForce()` (mediaan +/- 3x MAD-uitschieterfilter, alleen bij >=4
+    punten per graad, anders gewoon het gemiddelde), `perDegreeForce()`
+    (groepeert per heel-graad `Math.round(angle)`), `interpolateDegrees()`
+    (lineair interpoleren van ontbrekende graden binnen het bereik),
+    `buildKrachtHoekRows(angles, forces)` (splitst de meting op het keerpunt
+    -- de hoogste hoekwaarde -- in een omhoog- en een omlaag-tak, en
+    retourneert `[["angle_deg","force_omhoog_N","force_omlaag_N"], ...]`
+    oplopend gesorteerd op hoek) en `degreesRange()`. Zelfde aanpak als een
+    los Python-nabewerkingsscript dat dezelfde dag op de Metingen-fileshare
+    op losse xlsx-exports werd toegepast (buiten deze repo, puur ter context).
+  - **`buildReportXlsxBlob()` uitgebreid** met een 3e tabblad `Kracht_hoek`
+    (`sheet3Xml`, zelfde stramien als het bestaande `sheet2Xml`: alleen
+    `sheetXmlRows()`, geen drawing/afbeelding) gevuld met
+    `buildKrachtHoekRows(dataRows.slice(1).map(r=>r[1]), dataRows.slice(1).map(r=>r[2]))`.
+    `[Content_Types].xml`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels` en
+    de `files`-array zijn alle 4 bijgewerkt zodat het 3e tabblad daadwerkelijk
+    meegenomen wordt. Zowel de "Opslaan"-knop (`btnReportPdf`) als het losse
+    (advanced-only) `btnReportXlsx`-knopje roepen dezelfde
+    `buildReportXlsxBlob()` aan, dus beide exportpaden krijgen het nieuwe
+    tabblad zonder verdere wijziging.
+  - **Getest**: `node --check` op het geëxtraheerde scriptblok (geen
+    syntaxfouten). Daarnaast een los Node-scriptje (niet gecommit, in de
+    scratchpad-map) dat de relevante functies uit het bestand extraheert en
+    met een synthetische meting (hoek van -48° naar -2° en weer terug, met
+    ruis + een paar bewuste uitschieters per graad) + een dummy-jpeg
+    daadwerkelijk een `.xlsx` bouwt en naar schijf schrijft. Dat bestand is
+    vervolgens met Python/`openpyxl` geopend en gecontroleerd: 3 tabbladen
+    (`setup_analyse`, `data`, `Kracht_hoek`), `Kracht_hoek` heeft exact de 3
+    verwachte kolommen, oplopend gesorteerd op hele graden, de uitschieters
+    zijn weggefilterd (waarden blijven in het verwachte bereik), en
+    `setup_analyse`/`data` zijn ongewijzigd/intact gebleven (`data` nog
+    steeds 189 rijen, `setup_analyse` met een geldige drawing-relatie naar
+    de afbeelding). Ook de ruwe zip-structuur gecontroleerd (`unzip -l`):
+    alle 11 verwachte onderdelen aanwezig, inclusief `sheet3.xml`.
+  - **Niet getest**: geen visuele controle in een echte browser/Excel --
+    dit environment heeft geen browser-tooling; de knoppen zelf
+    (`btnReportPdf`/`btnReportXlsx`) zijn niet live aangeklikt. Graag bij een
+    volgende live-test een echt rapport genereren en het `Kracht_hoek`-
+    tabblad in Excel openen om te bevestigen dat het er ook visueel klopt.
 - **2026-08-24** (vervolg: echte volgnummer-gaten gevonden tijdens een
   live-test in Chrome + DUMPCANCEL, op verzoek naar aanleiding van herhaalde
   "volgnummer X oversprongen"-meldingen):

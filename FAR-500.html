@@ -1662,6 +1662,61 @@ function buildReportDataRows(series,res){
   }
   return rows;
 }
+/* ---- Kracht/hoek per graad, omhoog vs. omlaag (voor het "Kracht_hoek"-
+   tabblad in het XLSX-rapport) ---- */
+// Zelfde aanpak als de handmatige nabewerking op de Metingen-fileshare:
+// splitsen op het keerpunt (hoogste hoekwaarde) in een omhoog- en een
+// omlaag-tak, per heel-graad hoek de force_N-waarden groeperen, uitschieters
+// weg (mediaan +/- 3x MAD, alleen als een groep >=4 punten heeft) en het
+// resterende gemiddelde nemen, ontbrekende graden binnen het bereik lineair
+// interpoleren. Hoek oplopend van laag naar hoog.
+function median(vals){ const s=vals.slice().sort((a,b)=>a-b), n=s.length;
+  return n%2 ? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2; }
+function robustMeanForce(vals){
+  if(!vals.length) return null;
+  let v=vals;
+  if(v.length>=4){
+    const med=median(v), mad=median(v.map(x=>Math.abs(x-med)));
+    if(mad>0){ const kept=v.filter(x=>Math.abs(x-med)<=3*mad); if(kept.length) v=kept; }
+  }
+  return v.reduce((a,b)=>a+b,0)/v.length;
+}
+function perDegreeForce(angles,forces){
+  const buckets={};
+  for(let i=0;i<angles.length;i++){ const d=Math.round(angles[i]); (buckets[d]=buckets[d]||[]).push(forces[i]); }
+  const out={}; Object.keys(buckets).forEach(d=>out[d]=robustMeanForce(buckets[d]));
+  return out;
+}
+function interpolateDegrees(byDeg,degrees){
+  const known=degrees.filter(d=>byDeg[d]!=null);
+  const out={};
+  degrees.forEach(d=>{
+    if(byDeg[d]!=null){ out[d]=byDeg[d]; return; }
+    const lower=known.filter(k=>k<d).pop(), upper=known.find(k=>k>d);
+    if(lower==null&&upper===undefined) out[d]=null;
+    else if(lower==null) out[d]=byDeg[upper];
+    else if(upper===undefined) out[d]=byDeg[lower];
+    else out[d]=byDeg[lower]+(d-lower)/(upper-lower)*(byDeg[upper]-byDeg[lower]);
+  });
+  return out;
+}
+function buildKrachtHoekRows(angles,forces){
+  const header=["angle_deg","force_omhoog_N","force_omlaag_N"];
+  if(!angles.length) return [header];
+  let turnIdx=0; for(let i=1;i<angles.length;i++) if(angles[i]>angles[turnIdx]) turnIdx=i;
+  const upFull=interpolateDegrees(perDegreeForce(angles.slice(0,turnIdx+1),forces.slice(0,turnIdx+1)), degreesRange(angles));
+  const dnFull=interpolateDegrees(perDegreeForce(angles.slice(turnIdx),forces.slice(turnIdx)), degreesRange(angles));
+  const rows=[header];
+  degreesRange(angles).forEach(d=>{
+    const u=upFull[d], n=dnFull[d];
+    rows.push([d, u==null?"":Math.round(u*10)/10, n==null?"":Math.round(n*10)/10]);
+  });
+  return rows;
+}
+function degreesRange(angles){
+  const lo=Math.round(Math.min(...angles)), hi=Math.round(Math.max(...angles));
+  const out=[]; for(let d=lo; d<=hi; d++) out.push(d); return out;
+}
 // Op verzoek: de rapport-bestandsnaam neemt ook de notitie (Positie/Belasting)
 // mee -- een lange maar praktische naam, zodat een los .xlsx/.pdf-bestand
 // (bv. in de GitHub-release-lijst) zonder het te openen al herkenbaar is.
@@ -1899,11 +1954,14 @@ function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
   const TARGET_W_PX=980;
   const scale=TARGET_W_PX/imgWpx;
   const emuW=Math.round(imgWpx*scale*9525), emuH=Math.round(imgHpx*scale*9525);
+  const khRows=buildKrachtHoekRows(dataRows.slice(1).map(r=>r[1]), dataRows.slice(1).map(r=>r[2]));
   const sheet1Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
     '<sheetData></sheetData><drawing r:id="rId1"/></worksheet>';
   const sheet2Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sheetXmlRows(dataRows)+'</sheetData></worksheet>';
+  const sheet3Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sheetXmlRows(khRows)+'</sheetData></worksheet>';
   const drawingXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'+
     '<xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>'+
@@ -1921,6 +1979,7 @@ function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
       '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
       '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+      '<Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
       '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'+
       '</Types>'},
     {name:"_rels/.rels",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
@@ -1928,14 +1987,16 @@ function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
     {name:"xl/workbook.xml",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
-      '<sheets><sheet name="setup_analyse" sheetId="1" r:id="rId1"/><sheet name="data" sheetId="2" r:id="rId2"/></sheets></workbook>'},
+      '<sheets><sheet name="setup_analyse" sheetId="1" r:id="rId1"/><sheet name="data" sheetId="2" r:id="rId2"/><sheet name="Kracht_hoek" sheetId="3" r:id="rId3"/></sheets></workbook>'},
     {name:"xl/_rels/workbook.xml.rels",str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'+
       '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>'+
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>'+
       '</Relationships>'},
     {name:"xl/worksheets/sheet1.xml", str:sheet1Xml},
     {name:"xl/worksheets/sheet2.xml", str:sheet2Xml},
+    {name:"xl/worksheets/sheet3.xml", str:sheet3Xml},
     {name:"xl/worksheets/_rels/sheet1.xml.rels", str:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>'},
