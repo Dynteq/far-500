@@ -80,11 +80,19 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
     --check`, en alle 4 bestaande jsdom-testbestanden opnieuw gedraaid (geen
     regressies -- `send()` is in de tests een no-op zolang `ctrlChar` null
     is, dus de nieuwe `send("DUMPCANCEL")`-aanroepen breken niets).
-    Geflashed naar COM10, hash-geverifieerd. **Nog niet opnieuw live
-    bevestigd** dat de 40ms-pacing de volgnummer-gaten daadwerkelijk
-    wegneemt (alleen de eerdere OLED/protocol-fixes waren al bevestigd) --
-    graag nogmaals een "Importeer geschiedenis" met een groter logbestand
-    proberen en melden of er nog gaten optreden.
+    Geflashed naar COM10, hash-geverifieerd.
+  - **✅ Live bevestigd werkend in Edge** (gebruiker, zelfde dag): geen
+    volgnummer-gaten meer, "Importeer geschiedenis" rondt nu betrouwbaar af.
+    Hiermee is de hele BLE-DUMP-betrouwbaarheidssaga (zie de entries
+    hierboven/hieronder: INDICATE-poging → teruggedraaid → niet-blokkerende
+    state machine → millis()-bug → stale-cache-omweg → protocol-mismatch →
+    40ms-pacing + DUMPCANCEL) afgerond en bevestigd. Openstaand voor een
+    volgende sessie, indien ooit weer relevant: dezelfde 40ms-pacing is nog
+    niet expliciet getest met een écht groot logbestand (honderden
+    metingen) over een langere tijdsduur — als daar op termijn alsnog
+    incidentele gaten optreden, is een adaptievere pacing (of alsnog een
+    niet-blokkerende INDICATE met correcte async-afhandeling, zie de
+    gearchiveerde poging hierboven) de voor de hand liggende vervolgstap.
 - **2026-08-24** (afronding van de BLE-DUMP-betrouwbaarheidssaga hieronder —
   meerdere iteraties, uiteindelijk werkend bevestigd door de gebruiker,
   gecommit+gepusht): de 2026-08-21-entry direct hieronder ("BLE-overdracht
