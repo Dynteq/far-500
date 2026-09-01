@@ -47,6 +47,56 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-09-01** (nieuw veld "Temperatuur (°C)" toegevoegd, op verzoek, alles
+  in `FAR-500.html`):
+  - **Nieuw invulveld** `#temperatuur` in de "Meting"-kaart (naast Naam/
+    Notities). Verplicht: de hele kaart knippert oranje (bestaand
+    `needs-fill`-mechanisme, `updateMetingBlink()`) zolang niet alle 3 velden
+    (Naam, Notities, Temperatuur) gevuld zijn — was voorheen alleen Naam+
+    Notities. Ook toegevoegd aan `reportPrereqsOk()`, dus zonder ingevulde
+    temperatuur geen rapport (XLSX/PDF) te genereren.
+  - **Automatisch voorgevuld met de actuele buitentemperatuur in Nederland**
+    (`fetchOutdoorTemp()`/`applyOutdoorTemp()`, aangeroepen bij het laden van
+    de pagina): via `navigator.geolocation` (5s timeout) de eigen locatie, of
+    bij weigering/ontbreken een vaste terugval-coördinaat (De Bilt,
+    52.10992/5.18069 — KNMI-referentiepunt, midden van NL) — opgevraagd bij
+    **Open-Meteo** (`api.open-meteo.com/v1/forecast?...&current=temperature_2m`,
+    geen API-key nodig, CORS-vriendelijk, dus rechtstreeks vanuit de browser
+    bruikbaar zonder de bestaande Cloudflare-Worker-relay). Vult het veld
+    alleen als het nog leeg is (nooit een handmatige waarde overschrijven) en
+    blijft daarna gewoon een vrij bewerkbaar invulveld.
+  - **Komt terug in alle exports**: `metaRows()` (dus zowel de ruwe
+    "Meetgegevens XLSX"/CSV als de metadata-header) heeft een nieuwe regel
+    "Temperatuur (°C)"; het canvas-gerasterde rapport (XLSX-tabblad
+    `setup_analyse` + PDF, gedeelde `buildAnalyseReportCanvas()`) toont hem
+    als extra regel in het "Setup"-blok (`TOP_BLOCK_H` opgehoogd van 7 naar
+    8 tekstregels om ruimte te maken). Bij het laden van een oude meting via
+    "Oude meting laden (GitHub)" (`btnOldMeasLoad`) wordt de opgeslagen
+    temperatuur nu ook teruggezet in het veld (`metaStr(meta,"Temperatuur
+    (°C)",1)`) — bestanden van vóór deze wijziging missen die metadata-regel
+    gewoon, dan blijft het veld leeg (blinkt dan weer oranje tot opnieuw
+    ingevuld, geen crash).
+  - **Getest**: `node --check` op het geëxtraheerde scriptblok, en een
+    headless jsdom-run (15 checks, canvas-2D-context gestubd — dit
+    environment heeft geen browser-tooling) die bevestigt: het veld bestaat
+    en blokkeert een mislukte/geen-netwerk auto-fetch niet (geen crash, veld
+    blijft gewoon leeg); de Meting-kaart blijft knipperen zolang temperatuur
+    leeg is en stopt zodra gevuld; `metaRows()` bevat de juiste
+    Temperatuur-regel/waarde; `reportPrereqsOk()` faalt zonder temperatuur en
+    slaagt zodra ook die (naast de al bestaande velden) gevuld is; en de
+    volledige rapport-pijplijn (synthetische meting →
+    `buildAnalyseReportAssets()` → XLSX + PDF) bouwt nog steeds foutloos —
+    de output is met `openpyxl` (3 tabbladen: `setup_analyse`/`data`/
+    `Kracht_hoek`, 11 zip-onderdelen) en `pypdf` (1 pagina, A4-portrait
+    mediabox 595x842) als structureel geldig bevestigd. Ook los bevestigd
+    (`openpyxl` op een via `buildMetingXlsx()` gebouwd bestand) dat de ruwe
+    "Meetgegevens XLSX" de temperatuur als een echte numerieke cel (bv.
+    `21.3`) in de metadata-rijen bevat. **Niet visueel gecontroleerd** in
+    een echte browser/mobiel — met name de geolocation-permissie-flow en of
+    Open-Meteo op een echte mobiele verbinding in het veld snel genoeg
+    reageert zijn niet live getest; graag bij de volgende veldmeting
+    bevestigen dat het temperatuurveld vanzelf een redelijke waarde toont en
+    dat de knipperende rand/rapportgeneratie er goed uitzien.
 - **2026-08-24** (3e tabblad "Kracht_hoek" toegevoegd aan het XLSX-rapport, op
   verzoek): in `FAR-500.html`.
   - **Nieuwe helperfuncties** (direct na `buildReportDataRows()`): `median()`,

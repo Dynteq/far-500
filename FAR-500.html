@@ -136,6 +136,7 @@
       <h3>Meting</h3>
       <div class="field" id="naamField"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Falco / Premium"></div>
       <div class="field" id="notitiesField"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. hoog / AzorTerschelling 28kg"></div>
+      <div class="field" id="tempField"><label>Temperatuur (°C)</label><input id="temperatuur" class="num" type="number" step="0.1" placeholder="buitentemp"></div>
     </div>
 
     <div class="card">
@@ -632,12 +633,39 @@ function updateCaptureBlink(){
   $("yLowField").classList.toggle("needs-capture", geo.angLow==null);
 }
 // Zelfde soort knipperende rand, nu om de hele "Meting"-kaart: knippert
-// zolang niet BEIDE velden (Naam en Notities) ingevuld zijn.
+// zolang niet ALLE 3 velden (Naam, Notities, Temperatuur) ingevuld zijn.
 function updateMetingBlink(){
-  const filled=$("naam").value.trim()!==""&&$("notities").value.trim()!=="";
+  const filled=$("naam").value.trim()!==""&&$("notities").value.trim()!==""&&$("temperatuur").value.trim()!=="";
   $("metingCard").classList.toggle("needs-fill", !filled);
 }
-["naam","notities"].forEach(id=>$(id).addEventListener("input", updateMetingBlink));
+["naam","notities","temperatuur"].forEach(id=>$(id).addEventListener("input", updateMetingBlink));
+// Vult "Temperatuur" automatisch met de actuele buitentemperatuur in
+// Nederland (Open-Meteo, geen API-key/CORS-vriendelijk) zodra de pagina
+// laadt -- op verzoek, zodat vooral op mobiel (in het veld) niet elke keer
+// handmatig een schatting ingetikt hoeft te worden. Blijft een pure
+// suggestie: overschrijft nooit een al ingevulde/handmatig aangepaste
+// waarde, en het veld blijft altijd vrij te bewerken.
+function applyOutdoorTemp(lat,lon){
+  fetch("https://api.open-meteo.com/v1/forecast?latitude="+lat+"&longitude="+lon+"&current=temperature_2m")
+    .then(r=>r.ok?r.json():null)
+    .then(d=>{
+      const t=d&&d.current&&d.current.temperature_2m;
+      if(typeof t==="number"&&isFinite(t)&&$("temperatuur").value.trim()===""){
+        $("temperatuur").value=Math.round(t*10)/10;
+        updateMetingBlink();
+      }
+    }).catch(()=>{});
+}
+function fetchOutdoorTemp(){
+  // Vaste terugval: De Bilt (KNMI-referentiepunt, midden van NL) als er geen
+  // (toestemming voor) geolocation is -- geeft altijd een zinnige NL-waarde.
+  const fallback=()=>applyOutdoorTemp(52.10992,5.18069);
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      pos=>applyOutdoorTemp(pos.coords.latitude,pos.coords.longitude),
+      fallback, {timeout:5000});
+  } else fallback();
+}
 
 /* ---------------- data ---------------- */
 let lastDevLogging=null;
@@ -950,6 +978,7 @@ $("btnOldMeasLoad").onclick=async()=>{
     samples=loaded;
     $("naam").value=metaStr(meta,"Naam (Merk/Type)",1);
     $("notities").value=metaStr(meta,"Notities (Positie/Belasting)",1);
+    $("temperatuur").value=metaStr(meta,"Temperatuur (°C)",1);
     // .value zetten triggert geen "input"-event, dus zonder deze aanroep
     // bleef de Meting-kaart knipperen (needs-fill-status) tot de gebruiker
     // handmatig een letter wijzigde.
@@ -1553,7 +1582,7 @@ function buildAnalyseReportCanvas(){
   // setup/Uitkomst-tabel/eindoordeel/grafiek staan allemaal op die ene
   // pagina. Metadata (naam/notities/datum) staat compact op 1 regel i.p.v.
   // 3 losse regels.
-  const TOP_BLOCK_H = 60 + 70 + 75 + 15 + 7*lineH;                 // titel + metadata-regel + "Setup" + 7 rijen
+  const TOP_BLOCK_H = 60 + 70 + 75 + 15 + 8*lineH;                 // titel + metadata-regel + "Setup" + 8 rijen
   const TABLE_BLOCK_H = 40+60 + 15 + 60 + 4*lineH + 40+70;         // "Uitkomst" + kop + 4 rijen + eindoordeel
   const CHART_TITLE_GAP = 50+60+32+20;                             // ruimte + titelregel + toelichtingsregel vóór de grafiek
   const H = PAD + TOP_BLOCK_H + TABLE_BLOCK_H + CHART_TITLE_GAP + CHART_H + PAD;
@@ -1607,6 +1636,7 @@ function buildAnalyseReportCanvas(){
   const naText=v=>(v==null||v===""||isNaN(v))?"—":v;
   const setupRows=[
     ["Meetas","3D-vector (2-punts justering 0°/45°)"],
+    ["Temperatuur (°C)", naText(r2(parseFloat($("temperatuur").value)))],
     ["L ingevoerd / berekend / gebruikt (cm)", naText(r2(geo.Lman))+" / "+naText(r2(geo.L))+" / "+naText(r2(Lused()))],
     ["H ingevoerd / berekend / gebruikt (cm)", naText(r2(geo.Hman))+" / "+naText(r2(geo.H))+" / "+naText(r2(Hused()))],
     ["Handvat hoog (cm) / hoek (deg)", naText(r2(geo.yHigh))+" / "+naText(r2(geo.angHigh))],
@@ -1738,6 +1768,7 @@ function metaRows(){
     ["Meting nr", curMeasNum!=null?curMeasNum:""],
     ["Naam (Merk/Type)", $("naam").value],
     ["Notities (Positie/Belasting)", $("notities").value],
+    ["Temperatuur (°C)", r2(parseFloat($("temperatuur").value))],
     ["Datum/tijd meting", dt.toLocaleString('nl-NL')],
     ["Kalibratie", "3D-vector (2-punts justering 0°/45°)"],
     ["Handvat hoog (cm)", r2(geo.yHigh), "hoek hoog (deg)", r2(geo.angHigh)],
@@ -1817,13 +1848,15 @@ async function buildAnalyseReportAssets(){
   const jpegBytes=await canvasToJpegBytes(canvas,0.9);
   return {canvas, series, res, jpegBytes};
 }
-// Vóór het genereren van een rapport moeten de vier tekstvelden (Naam,
-// Notities, Handvat HOOG/LAAG cm) gevuld zijn ÉN moeten beide posities
-// daadwerkelijk vastgelegd zijn (geo.angHigh/angLow) -- alleen een ingevulde
-// hoogte zonder vastgelegde hoek is niet genoeg. Bij een ontbrekend item:
-// duidelijke popup, en er wordt bewust geen rapport gebouwd/geüpload.
+// Vóór het genereren van een rapport moeten de vijf tekstvelden (Naam,
+// Notities, Temperatuur, Handvat HOOG/LAAG cm) gevuld zijn ÉN moeten beide
+// posities daadwerkelijk vastgelegd zijn (geo.angHigh/angLow) -- alleen een
+// ingevulde hoogte zonder vastgelegde hoek is niet genoeg. Bij een
+// ontbrekend item: duidelijke popup, en er wordt bewust geen rapport
+// gebouwd/geüpload.
 function reportPrereqsOk(){
   const ok=$("naam").value.trim()!==""&&$("notities").value.trim()!==""&&
+    $("temperatuur").value.trim()!==""&&
     $("yHigh").value.trim()!==""&&$("yLow").value.trim()!==""&&
     geo.angHigh!=null&&geo.angLow!=null;
   if(!ok) alert("Niet alle gegevens zijn ingevuld.");
@@ -2129,6 +2162,7 @@ function drawXY(){
 redraw();
 updateCaptureBlink();
 updateMetingBlink();
+fetchOutdoorTemp();
 (function(){ const tb=document.getElementById("themeToggle");
   function apply(light){ document.body.classList.toggle("light",light);
     tb.textContent = light ? "\u263e" : "\u2600";
