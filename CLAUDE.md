@@ -47,6 +47,32 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-09-01** (vervolg: "Opslaan" slaat/uploadt het canvas-gerasterde
+  Rapport-XLSX niet meer op, op verzoek -- "dat heb ik nooit aangegeven dat
+  ik dat wil"; expliciete wens: Excel = data, PDF = opmaak + analyse):
+  - **`btnReportPdf.onclick()` bouwt/downloadt/uploadt nu nog maar 2
+    bestanden**: de Meetgegevens-XLSX (`buildMetingXlsx()` -- ruwe data +
+    volledige setup-metadata) en de PDF (`buildAnalysisPdfBlob()` --
+    opmaak + C1-C4-analyse). Het canvas-gerasterde Rapport-XLSX
+    (`buildReportXlsxBlob()`, 3 tabbladen: `setup_analyse` als afbeelding /
+    `data` / `Kracht_hoek`) wordt door "Opslaan" niet meer gebouwd, lokaal
+    gedownload, of naar GitHub geüpload -- dit was in de vorige 2 sessies
+    per ongeluk aan "Opslaan" toegevoegd zonder dat daarom gevraagd was.
+  - **De losse (adv-only) knop "Rapportage + Analyse XLSX" (`btnReportXlsx`)
+    blijft ongewijzigd bestaan** voor wie dat canvas-gerasterde XLSX-rapport
+    ondanks alles nog wil (lokale download, geen upload) -- niet aangeraakt.
+  - De sheet2-fallback in `parseFarMetingWorkbook()` (uit de vorige sessie,
+    voor het laden van al bestaande alléén-als-rapport geüploade metingen
+    zoals #50) blijft gewoon staan -- kan geen kwaad, en blijft nuttig voor
+    wie via `btnReportXlsx` toch nog eens een Rapport-XLSX los uploadt.
+  - **Getest**: `node --check`, en een jsdom-run (12 checks) die bevestigt:
+    "Opslaan" bouwt/downloadt/uploadt nu exact 2 bestanden (geen enkel
+    bestand met "rapport" in de naam meer), de statusregel noemt alleen
+    "Meetgegevens XLSX" en "PDF" (niet meer "Rapport XLSX"), en
+    `btnReportXlsx` bestaat nog steeds als aparte, ongewijzigde knop.
+    **Niet visueel gecontroleerd** in een echte browser -- graag bij de
+    volgende meting bevestigen dat "Opslaan" nu alleen nog een .xlsx
+    (data) + .pdf (opmaak/analyse) oplevert, lokaal en op GitHub.
 - **2026-09-01** (bugfix + uitbreiding: "Laden in het analyse-scherm" faalde
   op via "Opslaan" geüploade metingen ("Geen datatabel (t_s-header)
   gevonden"), en op verzoek moet "Laden" ook de setup (merk/type, notities,
