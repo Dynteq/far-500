@@ -316,7 +316,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-09-01 13:45</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-09-01 14:10</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -2036,8 +2036,18 @@ function buildReportXlsxBlob(jpegBytes, imgWpx, imgHpx, dataRows){
   const sheet1Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
     '<sheetData></sheetData><drawing r:id="rId1"/></worksheet>';
+  // Op verzoek: alle metadata (Naam/Notities/Temperatuur/Handvat-posities/
+  // etc., zelfde metaRows() als de Meetgegevens-XLSX -- 1 regel per item)
+  // staat nu ook als ruwe tekst-/getalcellen bovenaan het "data"-tabblad,
+  // gevolgd door een lege regel en dan de bestaande header+datarijen. Sheet1
+  // ("setup_analyse") toont die info alleen als afbeelding -- zonder deze
+  // rijen was temperatuur/omschrijving/etc. dus niet als los uitleesbare
+  // tekst beschikbaar in dit werkboek. `dataRows` zelf blijft ongewijzigd
+  // (de Kracht_hoek-berekening hierboven gebruikt 'm al, vóór deze rijen
+  // ertussen worden gezet).
+  const sheet2Rows=[...metaRows(), [], ...dataRows];
   const sheet2Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sheetXmlRows(dataRows)+'</sheetData></worksheet>';
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sheetXmlRows(sheet2Rows)+'</sheetData></worksheet>';
   const sheet3Xml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'+sheetXmlRows(khRows)+'</sheetData></worksheet>';
   const drawingXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+

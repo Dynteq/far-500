@@ -47,6 +47,32 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-09-01** (vervolg: alle metadata nu ook als ruwe tekst/getallen
+  bovenaan het "data"-tabblad van het Rapportage+Analyse-XLSX, op verzoek --
+  "zodat ook temperatuur en omschrijving als ruwe strings beschikbaar zijn",
+  in `FAR-500.html`, `buildReportXlsxBlob()`):
+  - Sheet1 ("setup_analyse") toont Naam/Notities/Temperatuur/Handvat-
+    posities/etc. alleen als afbeelding (canvas-render), dus die info was
+    nergens als los uitleesbare tekst in dit werkboek beschikbaar. Sheet2
+    ("data") begint nu met dezelfde `metaRows()` (1 regel per item, zelfde
+    lijst als de Meetgegevens-XLSX) gevolgd door een lege regel, en dan
+    ongewijzigd de bestaande header+datarijen. De Kracht_hoek-berekening
+    (sheet3) gebruikt nog steeds de originele, schone `dataRows`-parameter
+    (vóór de metaRows() ertussen worden gezet) en is dus niet geraakt.
+  - Als bijeffect wordt de sheet2-fallback in `parseFarMetingWorkbook()`
+    (vorige sessie toegevoegd, voor het laden van alléén-als-rapport
+    geüploade metingen) nu ook meteen krachtiger: rapport-XLSX-bestanden die
+    vanaf nu gegenereerd worden geven bij "Laden in het analyse-scherm" ook
+    de volledige setup terug (niet meer alleen de tijdreeks), omdat die
+    metadata nu ook op sheet2 staat.
+  - **Getest**: `node --check`, en een jsdom-run die `buildReportXlsxBlob()`
+    rechtstreeks aanroept met een synthetische meting en het resultaat naar
+    schijf schrijft; vervolgens met **openpyxl** geopend en gecontroleerd:
+    sheet "data" begint met de 21 verwachte metaRows()-regels (Naam,
+    Notities, Temperatuur=18.5 als echt getal, Handvat hoog/laag+hoek, H/L
+    berekend, etc.), gevolgd door een lege regel en dan de "t_s"-headerrij;
+    sheet "Kracht_hoek" en "setup_analyse" zijn ongewijzigd/intact gebleven.
+    **Niet visueel gecontroleerd** in een echte browser/Excel.
 - **2026-09-01** (vervolg: "Opslaan" slaat/uploadt het canvas-gerasterde
   Rapport-XLSX niet meer op, op verzoek -- "dat heb ik nooit aangegeven dat
   ik dat wil"; expliciete wens: Excel = data, PDF = opmaak + analyse):
