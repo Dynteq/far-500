@@ -47,6 +47,18 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-09-01** (vervolg: "Opslaan" stopt nu altijd eerst een nog lopende
+  meting, op verzoek, in `FAR-500.html`): `btnReportPdf.onclick()` roept nu,
+  vóór het bouwen van het rapport, `if(running){ send("STOP");
+  running=false; updateRun(); keepAwakeStop(); }` aan -- exact hetzelfde
+  STOP-pad als de losse Stop-knop (`btnStop.onclick`) en als de bestaande
+  auto-stop bij "Oude meting laden"/geschiedenis-import. Voorkomt dat er nog
+  live samples binnenkomen terwijl het rapport al gebouwd wordt. **Getest**:
+  `node --check`, en een jsdom-run (5 checks) die een lopende meting
+  simuleert (`running=true`, Stop-knop actief) en bevestigt dat na het
+  klikken op "Opslaan" `running=false` is, de Stop-knop weer disabled staat
+  en het statuslabel "gestopt" toont. **Niet visueel gecontroleerd** in een
+  echte browser/op het device.
 - **2026-09-01** (bugfix: "Opslaan"-knop uploadde alleen de PDF naar GitHub,
   niet de XLSX, op verzoek na een gemelde meting #50 waarbij dit opviel):
   - **Root cause**: `btnReportPdf.onclick()` (`FAR-500.html`) downloadde
