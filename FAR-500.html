@@ -262,7 +262,7 @@
         </div>
         <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
         <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
-        <button id="btnReportPdf" class="wide primary" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat ook de XLSX op en upload naar GitHub">Opslaan</button>
+        <button id="btnReportPdf" class="wide primary" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat XLSX + PDF lokaal op en upload beide naar GitHub">Opslaan</button>
         <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
       </div>
       <div class="hint" id="ghStatus"></div>
@@ -316,7 +316,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-09-01 10:30</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-09-01 12:15</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -586,21 +586,48 @@ function isStandard(){ return document.body.classList.contains("standard"); }
   inp.addEventListener("blur",()=>{ if(inp.value.trim()) showSaved(); });
   change.onclick=(e)=>{ e.preventDefault(); showField(); };
 })();
-async function uploadToGitHub(blob,filename,statusElId,btnId){
-  const statusEl=$(statusElId), btn=btnId?$(btnId):null;
+// Kale netwerk-upload zonder DOM-status-bijwerken -- gedeeld door
+// uploadToGitHub() (1 bestand, bestaande knoppen) en uploadReportFiles()
+// (meerdere bestanden tegelijk, 1 gecombineerde statusregel).
+async function postToGitHubRaw(blob,filename){
   const secret=$("ghSecret").value.trim();
-  if(!secret){ statusEl.textContent="Vul eerst een upload-code in."; return false; }
-  if(btn) btn.disabled=true;
-  statusEl.textContent="bezig met uploaden…";
+  if(!secret) return {ok:false,error:"Vul eerst een upload-code in."};
   try{
     const res=await fetch(GH_RELAY_URL,{method:"POST",
       headers:{"X-Upload-Secret":secret,"X-Filename":filename,"Content-Type":blob.type||"application/octet-stream"},
       body:blob});
     const data=await res.json().catch(()=>({}));
-    if(res.ok && data.ok){ statusEl.innerHTML='gelukt — <a href="'+data.url+'" target="_blank" rel="noopener">bekijk op GitHub</a>'; return true; }
-    statusEl.textContent="mislukt: "+(data.error||res.status); return false;
-  }catch(e){ statusEl.textContent="mislukt: "+e.message; return false; }
-  finally{ if(btn) btn.disabled=false; }
+    if(res.ok && data.ok) return {ok:true,url:data.url};
+    return {ok:false,error:data.error||String(res.status)};
+  }catch(e){ return {ok:false,error:e.message}; }
+}
+async function uploadToGitHub(blob,filename,statusElId,btnId){
+  const statusEl=$(statusElId), btn=btnId?$(btnId):null;
+  if(!$("ghSecret").value.trim()){ statusEl.textContent="Vul eerst een upload-code in."; return false; }
+  if(btn) btn.disabled=true;
+  statusEl.textContent="bezig met uploaden…";
+  try{
+    const r=await postToGitHubRaw(blob,filename);
+    if(r.ok){ statusEl.innerHTML='gelukt — <a href="'+r.url+'" target="_blank" rel="noopener">bekijk op GitHub</a>'; return true; }
+    statusEl.textContent="mislukt: "+r.error; return false;
+  }finally{ if(btn) btn.disabled=false; }
+}
+// Upload meerdere bestanden (XLSX + PDF bij "Opslaan") tegelijk naar GitHub
+// en toont 1 gecombineerde statusregel i.p.v. dat de 2e upload de status van
+// de 1e overschrijft. Bestanden die mislukken blijven in lastReportUpload
+// staan zodat "Opnieuw uploaden naar GitHub" alleen de mislukte bestand(en)
+// opnieuw probeert, niet de al gelukte.
+async function uploadReportFiles(files){
+  const statusEl=$("ghStatus");
+  statusEl.textContent="bezig met uploaden ("+files.length+" bestand"+(files.length>1?"en":"")+")…";
+  const results=await Promise.all(files.map(async f=>({...f, r:await postToGitHubRaw(f.blob,f.name)})));
+  statusEl.innerHTML=results.map(x=>x.r.ok
+    ? x.label+": gelukt — <a href=\""+x.r.url+"\" target=\"_blank\" rel=\"noopener\">bekijk</a>"
+    : x.label+": mislukt: "+x.r.error
+  ).join(" · ");
+  const failed=results.filter(x=>!x.r.ok).map(x=>({blob:x.blob,name:x.name,label:x.label}));
+  lastReportUpload=failed;
+  $("btnGhRetry").style.display=failed.length?"":"none";
 }
 
 function computeGeo(){
@@ -1869,19 +1896,20 @@ $("btnReportXlsx").onclick=async()=>{
 // "Maak rapportage + Analyse" (op verzoek de hoofdknop -- bouwt de canvas
 // maar 1x en slaat daarvan zowel de XLSX als de PDF op, i.p.v. dat de
 // gebruiker apart nog op "Rapportage + Analyse XLSX" moet klikken).
-// Bewaart het laatst gegenereerde PDF-rapport zodat een mislukte GitHub-
-// upload (bv. geen netwerk in het veld) later handmatig opnieuw geprobeerd
-// kan worden via btnGhRetry, zonder het rapport opnieuw te hoeven genereren.
-let lastReportUpload=null;
+// Bewaart de nog-niet-gelukte upload(s) zodat een mislukte GitHub-upload
+// (bv. geen netwerk in het veld) later handmatig opnieuw geprobeerd kan
+// worden via btnGhRetry, zonder het rapport opnieuw te hoeven genereren.
+let lastReportUpload=[];
 $("btnReportPdf").onclick=async()=>{
   if(!reportPrereqsOk()) return;
   const btn=$("btnReportPdf"); btn.disabled=true;
-  $("btnGhRetry").style.display="none"; lastReportUpload=null;
+  $("btnGhRetry").style.display="none"; lastReportUpload=[];
   try{
     const {canvas, series, res, jpegBytes}=await buildAnalyseReportAssets();
     const dataRows=buildReportDataRows(series,res);
     const xlsxBlob_=buildReportXlsxBlob(jpegBytes, canvas.width, canvas.height, dataRows);
-    download(fnameSuffix("rapport","xlsx"), xlsxBlob_);
+    const xlsxName=fnameSuffix("rapport","xlsx");
+    download(xlsxName, xlsxBlob_);
     // Kleine pauze tussen de 2 downloads: sommige browsers blokkeren het 2e
     // automatische bestand als 2 downloads te snel na elkaar vanuit script
     // getriggerd worden ("meerdere bestanden tegelijk downloaden"-blokkade) --
@@ -1889,23 +1917,28 @@ $("btnReportPdf").onclick=async()=>{
     // aankwam en de XLSX niet.
     await new Promise(r=>setTimeout(r,400));
     const pdfBlob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
-    const name=fnameSuffix("analyse","pdf");
-    download(name, pdfBlob, "dlFallback", true);   // append: laat ook de XLSX-fallback-link staan
-    // Op verzoek: in zowel Standard als Advanced wordt het PDF-rapport ook
-    // altijd naar GitHub geüpload (zelfde relay/upload-code als de andere
-    // "Naar GitHub"-knoppen) -- niet alleen lokaal gedownload. Lukt de upload
-    // niet (bv. geen netwerk op de meetlocatie), dan blijven de lokale
-    // bestanden gewoon staan en verschijnt "Opnieuw uploaden naar GitHub" om
-    // het later, met verbinding, alsnog te proberen.
-    const ok=await uploadToGitHub(pdfBlob, name, "ghStatus", "btnReportPdf");
-    if(!ok){ lastReportUpload={blob:pdfBlob,name}; $("btnGhRetry").style.display=""; }
+    const pdfName=fnameSuffix("analyse","pdf");
+    download(pdfName, pdfBlob, "dlFallback", true);   // append: laat ook de XLSX-fallback-link staan
+    // Op verzoek: in zowel Standard als Advanced worden zowel de XLSX als de
+    // PDF naar GitHub geüpload (zelfde relay/upload-code als de andere "Naar
+    // GitHub"-knoppen) -- niet alleen lokaal gedownload. Tot deze fix (na
+    // meting #50, op verzoek) werd hier alleen de PDF geüpload en kwam de
+    // XLSX nooit op GitHub terecht. Lukt een upload niet (bv. geen netwerk op
+    // de meetlocatie), dan blijven de lokale bestanden gewoon staan en
+    // verschijnt "Opnieuw uploaden naar GitHub" om alleen dat/die
+    // bestand(en) later, met verbinding, alsnog te proberen.
+    await uploadReportFiles([
+      {blob:xlsxBlob_, name:xlsxName, label:"XLSX"},
+      {blob:pdfBlob, name:pdfName, label:"PDF"},
+    ]);
   }catch(e){ alert(e.message); }
   finally{ updateReportButtons(); }
 };
 $("btnGhRetry").onclick=async()=>{
-  if(!lastReportUpload) return;
-  const ok=await uploadToGitHub(lastReportUpload.blob, lastReportUpload.name, "ghStatus", "btnGhRetry");
-  if(ok) $("btnGhRetry").style.display="none";
+  if(!lastReportUpload.length) return;
+  const btn=$("btnGhRetry"); btn.disabled=true;
+  try{ await uploadReportFiles(lastReportUpload); }
+  finally{ btn.disabled=false; }
 };
 function xlsxBlob(rows,sheetName){ return xlsxWorkbook([{name:sheetName,rows}]); }
 // Gedeeld door xlsxWorkbook() en buildReportXlsxBlob() (rapportage-export).

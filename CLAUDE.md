@@ -47,6 +47,35 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-09-01** (bugfix: "Opslaan"-knop uploadde alleen de PDF naar GitHub,
+  niet de XLSX, op verzoek na een gemelde meting #50 waarbij dit opviel):
+  - **Root cause**: `btnReportPdf.onclick()` (`FAR-500.html`) downloadde
+    lokaal altijd al zowel de XLSX als de PDF, maar riep `uploadToGitHub()`
+    daarna maar 1x aan -- alleen met het PDF-blob. De XLSX kwam dus nooit op
+    GitHub terecht, ook al leek de knop ("slaat ook de XLSX op en upload naar
+    GitHub") dat wel te beloven.
+  - **Fix**: nieuwe `postToGitHubRaw()` (kale fetch-upload, geen DOM-writes)
+    gedeeld door de bestaande `uploadToGitHub()` (1 bestand, ongewijzigd
+    extern gedrag voor `btnXlsxGh`/`btnHistXlsxGh`) en de nieuwe
+    `uploadReportFiles(files)` die meerdere bestanden **tegelijk** (XLSX +
+    PDF) uploadt en 1 gecombineerde statusregel toont (bv. "XLSX: gelukt —
+    bekijk · PDF: gelukt — bekijk"), i.p.v. dat de 2e upload de statustekst
+    van de 1e overschrijft. `lastReportUpload` is nu een array i.p.v. een
+    los object: bevat alleen de bestand(en) die mislukt zijn, zodat "Opnieuw
+    uploaden naar GitHub" (`btnGhRetry`) voortaan alleen het/de mislukte
+    bestand(en) opnieuw probeert -- een al gelukte upload wordt niet
+    onnodig herhaald.
+  - **Getest**: `node --check`, en een jsdom-run (10 checks) met een
+    gemockte `fetch()` die per scenario gericht kan laten falen: (a) beide
+    uploads gelukt -> 2 fetch-aanroepen (xlsx+pdf), status toont beide als
+    "gelukt", retry-knop blijft verborgen; (b) alleen de XLSX-upload
+    mislukt -> status toont "XLSX: mislukt"/"PDF: gelukt", retry-knop
+    verschijnt, `lastReportUpload` bevat uitsluitend de mislukte XLSX; (c)
+    een daaropvolgende retry doet exact 1 fetch-aanroep (alleen de XLSX,
+    niet nogmaals de al gelukte PDF) en verbergt de retry-knop weer na
+    succes. **Niet visueel gecontroleerd** in een echte browser -- graag bij
+    de volgende meting bevestigen dat na "Opslaan" zowel de XLSX als de PDF
+    daadwerkelijk op de GitHub-release verschijnen.
 - **2026-09-01** (vervolg: "Meting"-kaart uitgebreid tot "Meting / Setup" met
   alle 5 invoervariabelen, elk individueel knipperend, op verzoek, alles in
   `FAR-500.html`):
