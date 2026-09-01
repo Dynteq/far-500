@@ -262,7 +262,7 @@
         </div>
         <div class="hint wide" id="ghSecretSaved" style="display:none;margin-bottom:8px">Upload-code opgeslagen ✓ — <a href="#" id="ghSecretChange" style="color:var(--cyan)">wijzigen</a></div>
         <button id="btnReportXlsx" class="wide adv-only" disabled title="Vereist L en H (Handvat-posities → geometrie)">Rapportage + Analyse XLSX</button>
-        <button id="btnReportPdf" class="wide primary" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat XLSX + PDF lokaal op en upload beide naar GitHub">Opslaan</button>
+        <button id="btnReportPdf" class="wide primary" disabled title="Vereist L en H (Handvat-posities → geometrie); slaat Rapport-XLSX + PDF lokaal op en upload deze plus de Meetgegevens-XLSX (incl. setup) naar GitHub">Opslaan</button>
         <button id="btnXlsxGh" class="wide adv-only" disabled>Upload naar GitHub</button>
       </div>
       <div class="hint" id="ghStatus"></div>
@@ -316,7 +316,7 @@
 <!-- BUILD-STAMP: datum/tijd van de laatste bewerking van dit bestand, zodat je
      kunt verifiëren welke versie er (bv. op een telefoon/tablet) geladen is.
      Bij elke wijziging van FAR-500.html hier de datum/tijd bijwerken. -->
-<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-09-01 12:45</div>
+<div class="buildstamp" id="buildStamp">FAR-500.html — build 2026-09-01 13:20</div>
 
 <script>
 const SERVICE="9a8b0001-1d4c-4f6e-9b2a-2f3e4d5c6b7a";
@@ -961,10 +961,23 @@ function parseSheetRows(xmlText){
 // (uit meta teruggezette) geometrie, i.p.v. de destijds-opgeslagen afgeleide
 // kolommen te vertrouwen.
 function parseFarMetingWorkbook(bytes){
-  const sheetBytes=unzipStoredFile(bytes,"xl/worksheets/sheet1.xml");
-  const rows=parseSheetRows(new TextDecoder().decode(sheetBytes));
+  let rows=parseSheetRows(new TextDecoder().decode(unzipStoredFile(bytes,"xl/worksheets/sheet1.xml")));
   let headerIdx=-1;
   rows.forEach((row,i)=>{ if(row&&row[0]==="t_s") headerIdx=i; });
+  // Val terug op het "data"-tabblad (sheet2.xml) van een Rapportage+Analyse-
+  // XLSX (buildReportXlsxBlob()) -- sheet1 is daar alleen een afbeelding
+  // (setup_analyse), dus zonder deze fallback faalde het laden van zo'n
+  // bestand met "Geen datatabel (t_s-header) gevonden". Zo'n bestand heeft
+  // geen metaRows() (Naam/Notities/Handvat-posities/etc. staan alleen als
+  // pixels in de afbeelding, niet als cellen) -- er komen dus wel weer
+  // samples terug, maar `meta` blijft leeg en de setup-velden moeten
+  // opnieuw ingevuld worden.
+  if(headerIdx<0){
+    try{
+      rows=parseSheetRows(new TextDecoder().decode(unzipStoredFile(bytes,"xl/worksheets/sheet2.xml")));
+      rows.forEach((row,i)=>{ if(row&&row[0]==="t_s") headerIdx=i; });
+    }catch(e){ /* geen sheet2, of ook geen t_s daarin -- val door naar de foutmelding hieronder */ }
+  }
   if(headerIdx<0) throw new Error("Geen datatabel (t_s-header) gevonden in dit bestand.");
   const meta={};
   for(let i=0;i<headerIdx;i++){ const row=rows[i]; if(row&&row[0]) meta[row[0]]=row; }
@@ -1923,16 +1936,31 @@ $("btnReportPdf").onclick=async()=>{
     const pdfBlob=buildAnalysisPdfBlob(jpegBytes, canvas.width, canvas.height);
     const pdfName=fnameSuffix("analyse","pdf");
     download(pdfName, pdfBlob, "dlFallback", true);   // append: laat ook de XLSX-fallback-link staan
-    // Op verzoek: in zowel Standard als Advanced worden zowel de XLSX als de
-    // PDF naar GitHub geüpload (zelfde relay/upload-code als de andere "Naar
-    // GitHub"-knoppen) -- niet alleen lokaal gedownload. Tot deze fix (na
-    // meting #50, op verzoek) werd hier alleen de PDF geüpload en kwam de
-    // XLSX nooit op GitHub terecht. Lukt een upload niet (bv. geen netwerk op
-    // de meetlocatie), dan blijven de lokale bestanden gewoon staan en
-    // verschijnt "Opnieuw uploaden naar GitHub" om alleen dat/die
-    // bestand(en) later, met verbinding, alsnog te proberen.
+    // Op verzoek: naast het rapport (XLSX + PDF) wordt ook de "ruwe"
+    // Meetgegevens-XLSX (buildMetingXlsx(), zelfde inhoud als de losse
+    // "Meetgegevens XLSX"-knop) meegebouwd en geüpload. Alleen dát bestand
+    // bevat de volledige metaRows() (Naam/Notities/Temperatuur/Handvat
+    // hoog+laag+hoek/H/L) op een leesbaar tabblad -- het rapport-XLSX heeft
+    // op sheet1 alleen een afbeelding (setup_analyse) en geen metadata-
+    // cellen. Zonder dit bestand kan "Laden in het analyse-scherm" een via
+    // "Opslaan" geüploade meting dus niet met dezelfde setup (merk/type,
+    // notities, handvathoogtes, H/L) terugladen om een vervolgmeting mee te
+    // starten -- alleen de losse tijdreeks (via de sheet2-fallback in
+    // parseFarMetingWorkbook()), zonder metadata.
+    const metingXlsx=buildMetingXlsx();
+    // Op verzoek: in zowel Standard als Advanced worden alle 3 bestanden naar
+    // GitHub geüpload (zelfde relay/upload-code als de andere "Naar GitHub"-
+    // knoppen) -- niet alleen lokaal gedownload. Tot de eerdere fix (na
+    // meting #50, op verzoek) werd hier alleen de PDF geüpload; de XLSX-
+    // rapportage kwam toen nog niet mee, en de ruwe Meetgegevens-XLSX (dus
+    // ook de setup/metadata om een vervolgmeting mee te starten) helemaal
+    // niet. Lukt een upload niet (bv. geen netwerk op de meetlocatie), dan
+    // blijven de lokale bestanden gewoon staan en verschijnt "Opnieuw
+    // uploaden naar GitHub" om alleen dat/die bestand(en) later, met
+    // verbinding, alsnog te proberen.
     await uploadReportFiles([
-      {blob:xlsxBlob_, name:xlsxName, label:"XLSX"},
+      {blob:metingXlsx.blob, name:metingXlsx.name, label:"Meetgegevens XLSX"},
+      {blob:xlsxBlob_, name:xlsxName, label:"Rapport XLSX"},
       {blob:pdfBlob, name:pdfName, label:"PDF"},
     ]);
   }catch(e){ alert(e.message); }

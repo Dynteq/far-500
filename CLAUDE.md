@@ -47,6 +47,58 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-09-01** (bugfix + uitbreiding: "Laden in het analyse-scherm" faalde
+  op via "Opslaan" geüploade metingen ("Geen datatabel (t_s-header)
+  gevonden"), en op verzoek moet "Laden" ook de setup (merk/type, notities,
+  handvathoogtes, H/L) teruggeven om een vervolgmeting met dezelfde
+  omschrijving te starten -- alles in `FAR-500.html`):
+  - **Root cause van de foutmelding**: sinds de vorige fix (XLSX+PDF beide
+    naar GitHub) uploadde "Opslaan" alleen het **rapport**-XLSX
+    (`buildReportXlsxBlob()`, 3 tabbladen: `setup_analyse` (alléén een
+    afbeelding, geen cellen) / `data` / `Kracht_hoek`) en de PDF -- nooit de
+    "ruwe" Meetgegevens-XLSX (`buildMetingXlsx()`, 1 tabblad met volledige
+    `metaRows()` + t_s-datatabel op sheet1). `parseFarMetingWorkbook()`
+    (gebruikt door "Laden in het analyse-scherm") leest altijd sheet1 en
+    verwacht daar de t_s-header -- in het rapport-XLSX staat sheet1 alleen
+    als afbeelding, vandaar de foutmelding.
+  - **Fix 1 (root cause)**: `btnReportPdf.onclick()` bouwt en uploadt nu ook
+    de Meetgegevens-XLSX (3 bestanden totaal: Meetgegevens-XLSX + Rapport-
+    XLSX + PDF, 1 gecombineerde statusregel via `uploadReportFiles()`) --
+    alleen dát bestand bevat de volledige setup-metadata, dus vanaf nu geeft
+    elke "Opslaan" een via "Laden in het analyse-scherm" volledig
+    terug-te-laden bestand (incl. Naam/Notities/Temperatuur/Handvat
+    hoog+laag+hoek, waarmee H/L ook meteen weer berekenbaar is) -- precies
+    wat nodig is om een vervolgmeting met dezelfde omschrijving/setup te
+    starten. Bewust geen extra lokale download (blijft bij de bestaande 2:
+    rapport-XLSX + PDF) om het risico op een browser-blokkade bij een 3e
+    gelijktijdige download niet te vergroten -- wie ook lokaal een kopie
+    van de Meetgegevens-XLSX wil, gebruikt daarvoor de bestaande losse
+    knop.
+  - **Fix 2 (fallback voor al bestaande, alléén-als-rapport geüploade
+    metingen)**: `parseFarMetingWorkbook()` valt terug op het
+    `data`-tabblad (sheet2.xml) van een rapport-XLSX als sheet1 geen
+    t_s-header heeft. Zo'n bestand heeft geen metaRows() (sheet1 is alleen
+    een afbeelding) -- er komen dus wel weer samples/tijdreeks terug, maar
+    Naam/Notities/Handvat-posities blijven leeg (moeten opnieuw ingevuld
+    worden). Metingen die vóór deze fix alleen als rapport-XLSX zijn
+    geüpload (zoals meting #50) kunnen dus alsnog de ruwe data laten zien,
+    maar niet de oorspronkelijke setup -- die metadata is voor die
+    specifieke metingen nooit ergens opgeslagen geweest.
+  - **Getest**: `node --check`, en een jsdom-run (15 checks) die het
+    volledige end-to-end-pad simuleert met een gemockte GitHub-relay
+    (upload + download uit dezelfde in-memory store): (a) "Opslaan" upload
+    nu exact 3 bestanden (Meetgegevens-XLSX + Rapport-XLSX + PDF), status
+    toont alle 3 labels; (b) na het wissen van alle setup-velden en het
+    laden van de zojuist geüploade Meetgegevens-XLSX komen Naam/Notities/
+    Temperatuur/Handvat hoog+laag/geo.angHigh+angLow correct terug, en de
+    samples zijn geladen; (c) het laden van het (ook geüploade)
+    rapport-XLSX via hetzelfde "laden"-pad geeft niet meer de oude "Geen
+    datatabel"-foutmelding en herstelt via de sheet2-fallback alsnog de
+    tijdreeks. **Niet visueel gecontroleerd** in een echte browser/op
+    GitHub zelf -- graag bij de volgende meting bevestigen dat na "Opslaan"
+    alle 3 bestanden op de release staan en dat "Laden in het
+    analyse-scherm" daarna echt de volledige setup (incl. Handvat hoog/laag)
+    teruggeeft.
 - **2026-09-01** (vervolg: "Opslaan" stopt nu altijd eerst een nog lopende
   meting, op verzoek, in `FAR-500.html`): `btnReportPdf.onclick()` roept nu,
   vóór het bouwen van het rapport, `if(running){ send("STOP");
