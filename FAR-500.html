@@ -84,12 +84,9 @@
   .collapsible.open{max-height:160px;opacity:1}
 
   body.standard .adv-only{display:none !important}
-  #yHighField, #yLowField{border:3px solid transparent;border-radius:8px;padding:4px 6px;margin:-4px -6px 8px -6px}
-  #yHighField.needs-capture, #yLowField.needs-capture{animation:blinkOrangeBorder 2s steps(1,end) infinite}
+  .blink-field{border:3px solid transparent;border-radius:8px;padding:4px 6px;margin:-4px -6px 8px -6px}
+  .blink-field.needs-capture{animation:blinkOrangeBorder 2s steps(1,end) infinite}
   @keyframes blinkOrangeBorder{0%,49%{border-color:var(--orange)}50%,100%{border-color:transparent}}
-  #metingCard.needs-fill{border-width:3px}
-  #metingCard.needs-fill{animation:blinkOrangeCard 2s steps(1,end) infinite}
-  @keyframes blinkOrangeCard{0%,49%{border-color:var(--orange)}50%,100%{border-color:var(--line)}}
   .buildstamp{position:fixed;right:8px;bottom:6px;z-index:80;font-family:var(--mono);font-size:10px;
               color:var(--dim);background:var(--panel);border:1px solid var(--line);border-radius:5px;
               padding:2px 7px;opacity:.85;pointer-events:none}
@@ -133,42 +130,40 @@
     <button id="btnConnect" class="primary wide">Verbinden</button>
 
     <div class="card" id="metingCard">
-      <h3>Meting</h3>
-      <div class="field" id="naamField"><label>Naam (Merk/Type)</label><input id="naam" type="text" placeholder="bv. Falco / Premium"></div>
-      <div class="field" id="notitiesField"><label>Notities (Positie/Belasting)</label><input id="notities" type="text" placeholder="bv. hoog / AzorTerschelling 28kg"></div>
-      <div class="field" id="tempField"><label>Temperatuur (°C)</label><input id="temperatuur" class="num" type="number" step="0.1" placeholder="buitentemp"></div>
-    </div>
-
-    <div class="card">
-      <h3>Handvat-posities → geometrie</h3>
-      <div class="hint" style="margin-bottom:10px">Plaats de goot <b>omhoog</b>, meet de handvat-hoogte, vul die in en klik op "Huidige positie vastleggen". Herhaal daarna voor de positie <b>laag</b>.</div>
-      <div class="field" id="yHighField">
-        <label>Handvat HOOG (cm)</label>
+      <h3>Meting / Setup</h3>
+      <div class="field blink-field" id="naamField"><label>Merk &amp; type</label><input id="naam" type="text" placeholder="bv. Falco / Premium"></div>
+      <div class="field blink-field" id="notitiesField"><label>Positie &amp; belasting</label><input id="notities" type="text" placeholder="bv. hoog / AzorTerschelling 28kg"></div>
+      <div class="hint" style="margin:8px 0 10px">Plaats de goot <b>omhoog</b>, meet de handvat-hoogte, vul die in en klik op "Huidige positie vastleggen". Herhaal daarna voor de positie <b>laag</b>.</div>
+      <div class="field blink-field" id="yHighField">
+        <label>Handvat hoog (cm)</label>
         <input id="yHigh" class="num" type="number" step="0.1" placeholder="hoogte" value="160">
         <button id="capHigh">Huidige positie vastleggen</button><span class="cap" id="angHigh">—</span>
       </div>
-      <div class="field" id="yLowField">
-        <label>Handvat LAAG (cm)</label>
+      <div class="field blink-field" id="yLowField">
+        <label>Handvat laag (cm)</label>
         <input id="yLow" class="num" type="number" step="0.1" placeholder="hoogte" value="20">
         <button id="capLow">Huidige positie vastleggen</button><span class="cap" id="angLow">—</span>
       </div>
-      <div class="adv-only">
-        <div class="hint" style="margin:2px 0 8px">Geen live hoek beschikbaar (bv. na het laden van een oude meting waarbij de hoek niet is vastgelegd)? Vul de hoek handmatig in en klik op "Overschrijf posities".</div>
-        <div class="field">
-          <label>Hoek HOOG (deg, hand.)</label>
-          <input id="angHighManual" class="num" type="number" step="0.1" value="1.0">
-        </div>
-        <div class="field">
-          <label>Hoek LAAG (deg, hand.)</label>
-          <input id="angLowManual" class="num" type="number" step="0.1" value="-46.0">
-          <button id="btnOverridePositions">Overschrijf posities</button>
-        </div>
-        <div class="calc"><span>H berekend</span><b id="valH">—</b></div>
-        <div class="calc"><span>L berekend</span><b id="valL">—</b></div>
-        <div class="field" style="margin-top:8px"><label>H werkelijk (cm)</label><input id="Hman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
-        <div class="field"><label>L werkelijk (cm)</label><input id="Lman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
-        <div class="hint" id="geoHint">Werkelijke waarden hebben voorrang op de berekende voor afstand/hoogte.</div>
+      <div class="field blink-field" id="tempField"><label>Temperatuur (gasveer)</label><input id="temperatuur" class="num" type="number" step="0.1" placeholder="buitentemp"></div>
+    </div>
+
+    <div class="card adv-only">
+      <h3>Handvat-posities → geometrie</h3>
+      <div class="hint" style="margin:2px 0 8px">Geen live hoek beschikbaar (bv. na het laden van een oude meting waarbij de hoek niet is vastgelegd)? Vul de hoek handmatig in en klik op "Overschrijf posities".</div>
+      <div class="field">
+        <label>Hoek HOOG (deg, hand.)</label>
+        <input id="angHighManual" class="num" type="number" step="0.1" value="1.0">
       </div>
+      <div class="field">
+        <label>Hoek LAAG (deg, hand.)</label>
+        <input id="angLowManual" class="num" type="number" step="0.1" value="-46.0">
+        <button id="btnOverridePositions">Overschrijf posities</button>
+      </div>
+      <div class="calc"><span>H berekend</span><b id="valH">—</b></div>
+      <div class="calc"><span>L berekend</span><b id="valL">—</b></div>
+      <div class="field" style="margin-top:8px"><label>H werkelijk (cm)</label><input id="Hman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
+      <div class="field"><label>L werkelijk (cm)</label><input id="Lman" class="num" type="number" step="0.1" placeholder="optioneel"></div>
+      <div class="hint" id="geoHint">Werkelijke waarden hebben voorrang op de berekende voor afstand/hoogte.</div>
     </div>
 
     <div class="readrow">
@@ -623,22 +618,20 @@ function computeGeo(){
         $("valL").textContent=geo.L.toFixed(1)+" cm"; $("valH").textContent=geo.H.toFixed(1)+" cm"; } }
     if(!geo.valid){ $("valL").textContent="ongeldig"; $("valH").textContent="—"; }
   }
-  analyze(); redraw(); updateCaptureBlink();
+  analyze(); redraw(); updateSetupBlink();
 }
-// Laat de Handvat HOOG/LAAG-velden oranje knipperen (dikke rand, 1s aan/1s
-// uit) zolang die positie nog niet is vastgelegd -- op verzoek, zodat ook in
-// Standard mode duidelijk is dat deze stap nog moet gebeuren.
-function updateCaptureBlink(){
+// Laat elk van de 5 "Meting / Setup"-velden individueel oranje knipperen
+// (dikke rand, 1s aan/1s uit) zolang het nog niet ingevuld/vastgelegd is --
+// op verzoek, zodat ook in Standard mode per veld duidelijk is wat nog moet
+// gebeuren (i.p.v. de hele kaart in 1x als vaag "iets mist hier").
+function updateSetupBlink(){
+  $("naamField").classList.toggle("needs-capture", $("naam").value.trim()==="");
+  $("notitiesField").classList.toggle("needs-capture", $("notities").value.trim()==="");
   $("yHighField").classList.toggle("needs-capture", geo.angHigh==null);
   $("yLowField").classList.toggle("needs-capture", geo.angLow==null);
+  $("tempField").classList.toggle("needs-capture", $("temperatuur").value.trim()==="");
 }
-// Zelfde soort knipperende rand, nu om de hele "Meting"-kaart: knippert
-// zolang niet ALLE 3 velden (Naam, Notities, Temperatuur) ingevuld zijn.
-function updateMetingBlink(){
-  const filled=$("naam").value.trim()!==""&&$("notities").value.trim()!==""&&$("temperatuur").value.trim()!=="";
-  $("metingCard").classList.toggle("needs-fill", !filled);
-}
-["naam","notities","temperatuur"].forEach(id=>$(id).addEventListener("input", updateMetingBlink));
+["naam","notities","temperatuur"].forEach(id=>$(id).addEventListener("input", updateSetupBlink));
 // Vult "Temperatuur" automatisch met de actuele buitentemperatuur in
 // Nederland (Open-Meteo, geen API-key/CORS-vriendelijk) zodra de pagina
 // laadt -- op verzoek, zodat vooral op mobiel (in het veld) niet elke keer
@@ -652,7 +645,7 @@ function applyOutdoorTemp(lat,lon){
       const t=d&&d.current&&d.current.temperature_2m;
       if(typeof t==="number"&&isFinite(t)&&$("temperatuur").value.trim()===""){
         $("temperatuur").value=Math.round(t*10)/10;
-        updateMetingBlink();
+        updateSetupBlink();
       }
     }).catch(()=>{});
 }
@@ -980,9 +973,9 @@ $("btnOldMeasLoad").onclick=async()=>{
     $("notities").value=metaStr(meta,"Notities (Positie/Belasting)",1);
     $("temperatuur").value=metaStr(meta,"Temperatuur (°C)",1);
     // .value zetten triggert geen "input"-event, dus zonder deze aanroep
-    // bleef de Meting-kaart knipperen (needs-fill-status) tot de gebruiker
-    // handmatig een letter wijzigde.
-    updateMetingBlink();
+    // bleven de Naam/Notities/Temperatuur-velden knipperen (needs-capture)
+    // tot de gebruiker handmatig een letter wijzigde.
+    updateSetupBlink();
     loadedMeasMeta={datumStr: metaStr(meta,"Datum/tijd meting",1)};
     // "Meting nr" staat alleen in bestanden die na deze uitbreiding zijn
     // geëxporteerd -- ontbreekt die metadata (oudere GitHub-export), dan is
@@ -2160,8 +2153,7 @@ function drawXY(){
   x.fillText(ANGLE_MIN.toFixed(0)+"°",pad-4,h-8); x.fillText("+"+ANGLE_MAX.toFixed(0)+"°",w-30,h-8);
 }
 redraw();
-updateCaptureBlink();
-updateMetingBlink();
+updateSetupBlink();
 fetchOutdoorTemp();
 (function(){ const tb=document.getElementById("themeToggle");
   function apply(light){ document.body.classList.toggle("light",light);

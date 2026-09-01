@@ -47,6 +47,47 @@ Bouw een meetopstelling die kracht en hoek meet, weergeeft op OLED en via BLE ve
    
 ## Huidige status
 - **Eerstvolgende prioriteit**: de meet-unit zelf valideren (hardware/meting).
+- **2026-09-01** (vervolg: "Meting"-kaart uitgebreid tot "Meting / Setup" met
+  alle 5 invoervariabelen, elk individueel knipperend, op verzoek, alles in
+  `FAR-500.html`):
+  - **Kaart hernoemd** naar "Meting / Setup" en uitgebreid met de twee
+    Handvat-posities-invoervelden (`yHighField`/`yLowField`, incl. hun
+    "Huidige positie vastleggen"-knoppen), die eerder in de aparte
+    "Handvat-posities → geometrie"-kaart stonden. Volgorde van boven naar
+    onder: Merk & type (`naam`), Positie & belasting (`notities`), Handvat
+    hoog (`yHigh`), Handvat laag (`yLow`), Temperatuur (gasveer)
+    (`temperatuur`) — labels van de eerste 2 en de laatste zijn hernoemd naar
+    deze kortere tekst (was "Naam (Merk/Type)"/"Notities (Positie/
+    Belasting)"/"Temperatuur (°C)"); de onderliggende metadata-sleutels in
+    `metaRows()`/`metaStr()`-lookups (exportbestanden) zijn bewust
+    ongewijzigd gelaten voor achterwaartse compatibiliteit met eerder
+    geëxporteerde bestanden.
+  - **Elk van de 5 velden knippert nu individueel** (dezelfde dunne oranje
+    knipperrand die de Handvat-velden al hadden, nu via de gedeelde CSS-klasse
+    `.blink-field`/`.needs-capture` i.p.v. losse ID-selectors) i.p.v. de hele
+    kaart als geheel (het oude `#metingCard.needs-fill`/`blinkOrangeCard`-
+    mechanisme is verwijderd). Nieuwe `updateSetupBlink()` (vervangt de oude
+    `updateMetingBlink()`+`updateCaptureBlink()`) toggelt de 5 velden
+    onafhankelijk: Naam/Notities/Temperatuur op basis van
+    `.value.trim()===""`, Handvat hoog/laag op basis van `geo.angHigh`/
+    `geo.angLow==null` (ongewijzigde logica, alleen verplaatst).
+  - **"Handvat-posities → geometrie"-kaart bevat nu alleen nog de
+    Advanced-only geometrie-override** (Hoek HOOG/LAAG handmatig, "Overschrijf
+    posities", H/L berekend, H/L werkelijk) — de hele kaart heeft nu zelf de
+    `adv-only`-klasse (was voorheen alleen het binnenste blok), want zonder de
+    verplaatste invoervelden was er in Standard mode niets meer in over.
+  - **Getest**: `node --check` op het geëxtraheerde scriptblok, en een
+    headless jsdom-run (21 checks) die bevestigt: kaartkop "Meting / Setup",
+    juiste veldvolgorde or IDs, de 5 nieuwe labelteksten, dat alle 5 velden
+    bij een lege/niet-vastgelegde staat individueel knipperen, dat het vullen
+    van 1 veld (Naam, dan Notities, dan Temperatuur) alleen dát veld laat
+    stoppen met knipperen terwijl de andere onafhankelijk blijven knipperen,
+    dat `metingCard` zelf geen `needs-fill`-klasse meer krijgt (oud
+    mechanisme weg), en dat de geometrie-kaart nu `adv-only` is en de
+    Handvat-velden niet meer bevat. **Niet visueel gecontroleerd** in een
+    echte browser (geen browser-tooling in dit environment) — graag bij de
+    volgende sessie bevestigen dat de 5 velden er ook visueel goed uitzien en
+    prettig knipperen in Standard en Advanced mode.
 - **2026-09-01** (nieuw veld "Temperatuur (°C)" toegevoegd, op verzoek, alles
   in `FAR-500.html`):
   - **Nieuw invulveld** `#temperatuur` in de "Meting"-kaart (naast Naam/
